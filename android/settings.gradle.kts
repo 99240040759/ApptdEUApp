@@ -15,12 +15,21 @@ pluginManagement {
         mavenCentral()
         gradlePluginPortal()
     }
+
+    // Force all Kotlin plugins to stable 2.1.0 — prevents plugins requesting unreleased 2.2.x
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.namespace?.startsWith("org.jetbrains.kotlin") == true) {
+                useVersion("2.1.0")
+            }
+        }
+    }
 }
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     id("com.android.application") version "9.0.1" apply false
-    id("org.jetbrains.kotlin.android") version "2.3.20" apply false
+    id("org.jetbrains.kotlin.android") version "2.1.0" apply false
 }
 
 include(":app")

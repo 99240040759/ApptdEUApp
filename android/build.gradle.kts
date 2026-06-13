@@ -3,6 +3,15 @@ allprojects {
         google()
         mavenCentral()
     }
+    // Force stable Kotlin artifacts — prevents unreleased 2.2.x being requested by plugins
+    configurations.all {
+        resolutionStrategy.force(
+            "org.jetbrains.kotlin:kotlin-stdlib:2.1.0",
+            "org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.1.0",
+            "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.1.0",
+            "org.jetbrains.kotlin:kotlin-reflect:2.1.0",
+        )
+    }
 }
 
 val newBuildDir: Directory =
