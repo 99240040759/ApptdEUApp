@@ -22,7 +22,7 @@ dependencies:
   audioplayers: ^6.1.0
   intl: ^0.20.2
   flutter_html: ^3.0.0-beta.2
-  share_plus: ^13.0.0
+  share_plus: ^10.1.4
   image_picker: ^1.1.2
   file_picker: ^11.0.2
   google_sign_in: ^7.2.0
@@ -38,10 +38,6 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-
-# win32 is Windows-desktop-only — override to satisfy both file_picker 11.x and share_plus 13.x
-dependency_overrides:
-  win32: ^6.0.1
 
 flutter:
   uses-material-design: true
