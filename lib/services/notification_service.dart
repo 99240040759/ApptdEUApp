@@ -27,9 +27,9 @@ class NotificationService {
     // ignore: avoid_print
     if (token != null) print('FCM Token: $token');
 
-    // Local notifications setup
+    // flutter_local_notifications 22.x — initialize() uses named `settings:` param
     await _localNotifications.initialize(
-      const InitializationSettings(
+      settings: const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(),
       ),
@@ -38,28 +38,25 @@ class NotificationService {
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(_channel);
 
-    // Subscribe to topics (not supported on web)
     try {
       for (final topic in ['blogs', 'circulars', 'union_affairs']) {
         await _messaging.subscribeToTopic(topic);
       }
     } catch (_) {}
 
-    // Background handler
     FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
-
-    // Foreground handler
     FirebaseMessaging.onMessage.listen(_showForegroundNotification);
   }
 
   Future<void> _showForegroundNotification(RemoteMessage message) async {
     final notification = message.notification;
     if (notification == null) return;
+    // flutter_local_notifications 22.x — show() uses named params
     await _localNotifications.show(
-      notification.hashCode,
-      notification.title ?? 'APEU Update',
-      notification.body ?? '',
-      NotificationDetails(
+      id: notification.hashCode,
+      title: notification.title ?? 'APEU Update',
+      body: notification.body ?? '',
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           _channel.id, _channel.name,
           channelDescription: _channel.description,

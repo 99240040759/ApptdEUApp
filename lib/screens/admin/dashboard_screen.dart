@@ -349,7 +349,7 @@ class _FilesTabState extends State<_FilesTab> with AutomaticKeepAliveClientMixin
             icon: const Icon(Icons.attach_file),
             label: Text(fileName ?? 'Pick File'),
             onPressed: () async {
-              final result = await FilePicker.platform.pickFiles(
+              final result = await FilePicker.pickFiles(
                 type: FileType.custom,
                 allowedExtensions: _isCirculars
                     ? ['pdf', 'jpg', 'jpeg', 'png']

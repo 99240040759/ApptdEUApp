@@ -37,7 +37,7 @@ jobs:
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
           printf "storePassword=${{ secrets.KEYSTORE_PASSWORD }}\nkeyPassword=${{ secrets.KEY_PASSWORD }}\nkeyAlias=${{ secrets.KEY_ALIAS }}\nstoreFile=release.keystore\n" > android/key.properties
-          sed -i "s|YOUR_WEB_CLIENT_ID_HERE|${{ secrets.GOOGLE_WEB_CLIENT_ID }}|g" lib/services/auth_service.dart
+          sed -i "s|YOUR_WEB_CLIENT_ID_HERE|${{ secrets.GOOGLE_WEB_CLIENT_ID }}|g" android/app/src/main/res/values/strings.xml
 
       - name: Build APK
         run: |

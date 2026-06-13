@@ -18,13 +18,10 @@ subprojects {
 subprojects {
     project.evaluationDependsOn(":app")
 }
-// Force compileSdk 36 on all plugin subprojects — fires at plugin apply time, not eval time
-subprojects {
-    plugins.withId("com.android.library") {
-        configure<com.android.build.gradle.LibraryExtension> {
-            compileSdk = 36
-        }
-    }
+// gradle.afterProject fires after EACH project's own build.gradle is evaluated
+// — overrides any hardcoded compileSdk regardless of evaluation order
+gradle.afterProject {
+    extensions.findByType<com.android.build.gradle.LibraryExtension>()?.compileSdk = 36
 }
 
 tasks.register<Delete>("clean") {

@@ -48,7 +48,7 @@ class _BlogDetailScreenState extends State<BlogDetailScreen> {
           backgroundColor: AppColors.primary,
           actions: [
             IconButton(icon: const Icon(Icons.share_rounded), onPressed: () {
-              Share.share('${blog.title}\nhttps://apptd.org/blog/${blog.slug}');
+              SharePlus.instance.share(ShareParams(text: '${blog.title}\nhttps://apptd.org/blog/${blog.slug}'));
             }),
           ],
           flexibleSpace: FlexibleSpaceBar(
