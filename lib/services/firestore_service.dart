@@ -34,6 +34,10 @@ class FirestoreService {
     try { await _storage.refFromURL(url).delete(); } catch (_) {}
   }
 
+  // Inline blog image upload — used by quill image embed handler
+  Future<String> uploadBlogImage(Uint8List bytes, String name) =>
+      _uploadFile('blog_images', bytes, name);
+
   // ── Blogs ──
   Future<List<BlogPost>> getBlogs() async {
     final snap = await _db.collection('blogs').orderBy('created_at', descending: true).get();
@@ -91,6 +95,26 @@ class FirestoreService {
     });
   }
 
+  // Progress-enabled version — onProgress(0.0 → 1.0) fired during Storage upload
+  Future<void> createCircularWithProgress(
+    String title, Uint8List fileBytes, String fileName,
+    {void Function(double)? onProgress}
+  ) async {
+    final ref = _storage.ref('circulars/${DateTime.now().millisecondsSinceEpoch}-$fileName');
+    final task = ref.putData(fileBytes);
+    final sub = task.snapshotEvents.listen((snap) {
+      if (snap.totalBytes > 0) onProgress?.call(snap.bytesTransferred / snap.totalBytes);
+    });
+    await task;
+    await sub.cancel();
+    final url = await ref.getDownloadURL();
+    await _db.collection('circulars').add({
+      'title': title, 'date': DateTime.now().toIso8601String().substring(0, 10),
+      'fileUrl': url, 'fileType': _detectFileType(fileName),
+      'created_at': Timestamp.now(),
+    });
+  }
+
   // DELETE ORDER: Firestore doc FIRST, Storage file SECOND — matches website
   Future<void> deleteCircular(String id, String fileUrl) async {
     await _db.collection('circulars').doc(id).delete();
@@ -105,6 +129,26 @@ class FirestoreService {
 
   Future<void> createUnionAffair(String title, Uint8List fileBytes, String fileName) async {
     final url = await _uploadFile('union_affairs', fileBytes, fileName);
+    await _db.collection('union_affairs').add({
+      'title': title, 'date': DateTime.now().toIso8601String().substring(0, 10),
+      'fileUrl': url, 'fileType': _detectFileType(fileName),
+      'created_at': Timestamp.now(),
+    });
+  }
+
+  // Progress-enabled version
+  Future<void> createUnionAffairWithProgress(
+    String title, Uint8List fileBytes, String fileName,
+    {void Function(double)? onProgress}
+  ) async {
+    final ref = _storage.ref('union_affairs/${DateTime.now().millisecondsSinceEpoch}-$fileName');
+    final task = ref.putData(fileBytes);
+    final sub = task.snapshotEvents.listen((snap) {
+      if (snap.totalBytes > 0) onProgress?.call(snap.bytesTransferred / snap.totalBytes);
+    });
+    await task;
+    await sub.cancel();
+    final url = await ref.getDownloadURL();
     await _db.collection('union_affairs').add({
       'title': title, 'date': DateTime.now().toIso8601String().substring(0, 10),
       'fileUrl': url, 'fileType': _detectFileType(fileName),

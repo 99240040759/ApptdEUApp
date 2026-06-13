@@ -122,9 +122,11 @@ class AppTheme {
         titleTextStyle: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
       ),
       cardTheme: CardThemeData(
-        color: AppColors.cardBg, elevation: 1.5,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        color: AppColors.cardBg, elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.black.withAlpha(30),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(

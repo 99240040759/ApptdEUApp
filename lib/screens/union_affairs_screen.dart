@@ -1,6 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shimmer/shimmer.dart';
 import '../config/theme.dart';
 import '../models/union_affair.dart';
@@ -15,7 +20,6 @@ class UnionAffairsScreen extends StatefulWidget {
 class _UnionAffairsScreenState extends State<UnionAffairsScreen> {
   List<UnionAffair>? _items;
   bool _loading = true;
-  // Audio state
   final _player = AudioPlayer();
   String? _playingId;
   Duration _position = Duration.zero;
@@ -27,7 +31,9 @@ class _UnionAffairsScreenState extends State<UnionAffairsScreen> {
     _load();
     _player.onPositionChanged.listen((p) { if (mounted) setState(() => _position = p); });
     _player.onDurationChanged.listen((d) { if (mounted) setState(() => _duration = d); });
-    _player.onPlayerComplete.listen((_) { if (mounted) setState(() { _playingId = null; _position = Duration.zero; }); });
+    _player.onPlayerComplete.listen((_) {
+      if (mounted) setState(() { _playingId = null; _position = Duration.zero; });
+    });
   }
 
   @override
@@ -41,7 +47,7 @@ class _UnionAffairsScreenState extends State<UnionAffairsScreen> {
     } catch (_) { if (mounted) setState(() => _loading = false); }
   }
 
-  void _toggleAudio(UnionAffair item) async {
+  Future<void> _toggleAudio(UnionAffair item) async {
     if (_playingId == item.id) {
       await _player.pause();
       setState(() => _playingId = null);
@@ -54,15 +60,10 @@ class _UnionAffairsScreenState extends State<UnionAffairsScreen> {
 
   void _openFile(UnionAffair item) {
     if (item.fileType == 'image') {
-      showDialog(context: context, builder: (_) => Dialog.fullscreen(
-        child: Scaffold(
-          appBar: AppBar(title: Text(item.title, overflow: TextOverflow.ellipsis)),
-          backgroundColor: Colors.black,
-          body: InteractiveViewer(child: Center(child: Image.network(item.fileUrl, fit: BoxFit.contain))),
-        ),
-      ));
+      Navigator.push(context, MaterialPageRoute(
+        builder: (_) => _ImageViewerPage(url: item.fileUrl, title: item.title)));
     } else if (item.fileType == 'pdf') {
-      launchUrl(Uri.parse(item.fileUrl), mode: LaunchMode.externalApplication);
+      _downloadAndOpen(context, item.fileUrl, item.title);
     }
   }
 
@@ -71,67 +72,296 @@ class _UnionAffairsScreenState extends State<UnionAffairsScreen> {
     return RefreshIndicator(
       color: AppColors.primary, onRefresh: _load,
       child: _loading
-        ? ListView.builder(itemCount: 5, itemBuilder: (_, _) => _shimmer())
+        ? ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            itemCount: 5, itemBuilder: (_, _) => _shimmer())
         : (_items == null || _items!.isEmpty)
           ? ListView(children: const [SizedBox(height: 120), Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.folder_open, size: 56, color: AppColors.textMuted),
+              Icon(Icons.folder_open_rounded, size: 56, color: AppColors.textMuted),
               SizedBox(height: 8),
               Text('No union affairs yet', style: TextStyle(color: AppColors.textMuted)),
             ]))])
           : ListView.builder(
               itemCount: _items!.length,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              itemBuilder: (_, i) => _itemCard(_items![i]),
+              itemBuilder: (_, i) => _UnionCard(
+                item: _items![i],
+                isPlaying: _playingId == _items![i].id,
+                position: _position,
+                duration: _duration,
+                onTap: () => _items![i].fileType == 'audio'
+                    ? _toggleAudio(_items![i])
+                    : _openFile(_items![i]),
+                onSeek: (v) => _player.seek(Duration(milliseconds: (v * _duration.inMilliseconds).toInt())),
+              ),
             ),
     );
   }
 
-  Widget _itemCard(UnionAffair item) {
+  Widget _shimmer() => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Shimmer.fromColors(baseColor: Colors.grey.shade200, highlightColor: Colors.grey.shade50,
+      child: Card(child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(children: [
+          Container(width: 50, height: 50,
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12))),
+          const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(height: 14, width: double.infinity, color: Colors.white),
+            const SizedBox(height: 8),
+            Container(height: 12, width: 100, color: Colors.white),
+          ])),
+        ]),
+      ))),
+  );
+}
+
+// ── Per-item card ──
+class _UnionCard extends StatefulWidget {
+  final UnionAffair item;
+  final bool isPlaying;
+  final Duration position, duration;
+  final VoidCallback onTap;
+  final ValueChanged<double> onSeek;
+  const _UnionCard({
+    required this.item, required this.isPlaying,
+    required this.position, required this.duration,
+    required this.onTap, required this.onSeek,
+  });
+  @override
+  State<_UnionCard> createState() => _UnionCardState();
+}
+
+class _UnionCardState extends State<_UnionCard> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
     final isAudio = item.fileType == 'audio';
     final isPdf = item.fileType == 'pdf';
-    final isPlaying = _playingId == item.id;
-    final iconData = isAudio ? Icons.audiotrack : isPdf ? Icons.picture_as_pdf : Icons.image;
-    final iconColor = isAudio ? AppColors.audioPurple : isPdf ? AppColors.primary : AppColors.quickLink;
-    final bgColor = isAudio ? Colors.purple.shade50 : isPdf ? Colors.red.shade50 : Colors.blue.shade50;
+    final (iconData, iconColor, bgColor) = isAudio
+      ? (Icons.audiotrack_rounded, AppColors.audioPurple, const Color(0xFFFAF5FF))
+      : isPdf
+        ? (Icons.picture_as_pdf_rounded, AppColors.primary, const Color(0xFFFEF2F2))
+        : (Icons.image_rounded, AppColors.quickLink, const Color(0xFFEFF6FF));
+    final typeLabel = isAudio ? 'Audio' : isPdf ? 'PDF' : 'Image';
 
-    return Card(child: Column(children: [
-      ListTile(
-        leading: CircleAvatar(backgroundColor: bgColor, child: Icon(iconData, color: iconColor, size: 22)),
-        title: Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-        subtitle: Text(item.date, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-        trailing: isAudio
-          ? IconButton(
-              icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, color: AppColors.audioPurple, size: 32),
-              onPressed: () => _toggleAudio(item))
-          : Icon(isPdf ? Icons.open_in_new : Icons.zoom_in, size: 18, color: AppColors.textMuted),
-        onTap: isAudio ? () => _toggleAudio(item) : () => _openFile(item),
+    return AnimatedScale(
+      scale: _pressed ? 0.97 : 1.0,
+      duration: const Duration(milliseconds: 100),
+      curve: Curves.easeOut,
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTapDown: (_) => setState(() => _pressed = true),
+          onTapUp: (_) { setState(() => _pressed = false); widget.onTap(); },
+          onTapCancel: () => setState(() => _pressed = false),
+          splashColor: iconColor.withAlpha(20),
+          child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+              child: Row(children: [
+                // Icon box
+                Container(
+                  width: 50, height: 50,
+                  decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(12)),
+                  child: Icon(iconData, color: iconColor, size: 26),
+                ),
+                const SizedBox(width: 14),
+                // Content
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, height: 1.3)),
+                  const SizedBox(height: 5),
+                  Row(children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: iconColor.withAlpha(18),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: iconColor.withAlpha(50)),
+                      ),
+                      child: Text(typeLabel, style: TextStyle(
+                        fontSize: 10, fontWeight: FontWeight.w700, color: iconColor)),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(Icons.calendar_today_rounded, size: 11, color: AppColors.textMuted),
+                    const SizedBox(width: 3),
+                    Text(item.date, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                  ]),
+                ])),
+                // Action icon
+                if (isAudio)
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(
+                      key: ValueKey(widget.isPlaying),
+                      widget.isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded,
+                      color: AppColors.audioPurple, size: 38),
+                  )
+                else
+                  Container(
+                    width: 34, height: 34,
+                    decoration: BoxDecoration(
+                      color: iconColor.withAlpha(15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(isPdf ? Icons.open_in_new_rounded : Icons.open_in_full_rounded,
+                      size: 16, color: iconColor),
+                  ),
+              ]),
+            ),
+            // ── Audio inline player ──
+            if (isAudio && widget.isPlaying)
+              Container(
+                margin: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+                decoration: BoxDecoration(
+                  color: AppColors.audioPurple.withAlpha(12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.audioPurple.withAlpha(40)),
+                ),
+                child: Column(children: [
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 3,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                      activeTrackColor: AppColors.audioPurple,
+                      inactiveTrackColor: AppColors.audioPurple.withAlpha(40),
+                      thumbColor: AppColors.audioPurple,
+                    ),
+                    child: Slider(
+                      value: widget.duration.inMilliseconds > 0
+                          ? (widget.position.inMilliseconds / widget.duration.inMilliseconds).clamp(0.0, 1.0)
+                          : 0,
+                      onChanged: widget.onSeek,
+                    ),
+                  ),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    Text(_fmt(widget.position), style: TextStyle(fontSize: 11, color: AppColors.audioPurple.withAlpha(180))),
+                    Text(_fmt(widget.duration), style: TextStyle(fontSize: 11, color: AppColors.audioPurple.withAlpha(180))),
+                  ]),
+                ]),
+              ),
+          ]),
+        ),
       ),
-      // Inline audio progress
-      if (isPlaying) Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-        child: Row(children: [
-          Text(_fmt(_position), style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
-          Expanded(child: Slider(
-            value: _duration.inMilliseconds > 0 ? _position.inMilliseconds / _duration.inMilliseconds : 0,
-            activeColor: AppColors.audioPurple,
-            onChanged: (v) => _player.seek(Duration(milliseconds: (v * _duration.inMilliseconds).toInt())),
-          )),
-          Text(_fmt(_duration), style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
-        ]),
-      ),
-    ]));
+    );
   }
 
   String _fmt(Duration d) => '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+}
 
-  Widget _shimmer() => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-    child: Shimmer.fromColors(baseColor: Colors.grey.shade300, highlightColor: Colors.grey.shade100,
-      child: Card(child: ListTile(
-        leading: const CircleAvatar(backgroundColor: Colors.white),
-        title: Container(height: 14, width: 200, color: Colors.white),
-        subtitle: Container(height: 10, width: 80, color: Colors.white),
-      ))),
+// ── Reused helpers ──
+Future<void> _downloadAndOpen(BuildContext ctx, String url, String title) async {
+  final path = await showDialog<String?>(
+    context: ctx,
+    barrierDismissible: false,
+    builder: (_) => _DownloadDialog(url: url, title: title),
+  );
+  if (path != null && ctx.mounted) {
+    final result = await OpenFilex.open(path);
+    if (result.type != ResultType.done && ctx.mounted) {
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        SnackBar(content: Text('Could not open file: ${result.message}')));
+    }
+  }
+}
+
+class _DownloadDialog extends StatefulWidget {
+  final String url, title;
+  const _DownloadDialog({required this.url, required this.title});
+  @override
+  State<_DownloadDialog> createState() => _DownloadDialogState();
+}
+
+class _DownloadDialogState extends State<_DownloadDialog> {
+  double? _progress;
+  bool _cancelled = false;
+
+  @override
+  void initState() { super.initState(); _download(); }
+
+  Future<void> _download() async {
+    try {
+      final req = http.Request('GET', Uri.parse(widget.url));
+      final resp = await http.Client().send(req);
+      final total = resp.contentLength ?? 0;
+      var received = 0;
+      final chunks = <int>[];
+      await for (final chunk in resp.stream) {
+        if (_cancelled) break;
+        chunks.addAll(chunk);
+        received += chunk.length;
+        if (mounted) setState(() => _progress = total > 0 ? received / total : null);
+      }
+      if (_cancelled || !mounted) return;
+      final rawName = widget.url.split('/').last.split('?').first;
+      final ext = rawName.contains('.') ? rawName.split('.').last : 'pdf';
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/${DateTime.now().millisecondsSinceEpoch}.$ext');
+      await file.writeAsBytes(chunks);
+      if (mounted) Navigator.pop(context, file.path);
+    } catch (_) {
+      if (mounted) Navigator.pop(context, null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Row(children: [
+        Icon(Icons.download_rounded, color: AppColors.primary, size: 22),
+        SizedBox(width: 10),
+        Text('Opening file', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+      ]),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text(widget.title, maxLines: 2, overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+        const SizedBox(height: 16),
+        ClipRRect(borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: _progress, minHeight: 6,
+            backgroundColor: Colors.grey.shade200,
+            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.audioPurple),
+          )),
+        const SizedBox(height: 8),
+        Text(_progress == null ? 'Connecting…' : '${(_progress! * 100).toInt()}%',
+          style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+      ]),
+      actions: [
+        TextButton(onPressed: () { _cancelled = true; Navigator.pop(context, null); },
+          child: const Text('Cancel')),
+      ],
+    );
+  }
+}
+
+class _ImageViewerPage extends StatelessWidget {
+  final String url, title;
+  const _ImageViewerPage({required this.url, required this.title});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.black,
+    appBar: AppBar(
+      backgroundColor: Colors.black, foregroundColor: Colors.white,
+      title: Text(title, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
+    ),
+    body: InteractiveViewer(
+      minScale: 0.5, maxScale: 4.0,
+      child: Center(
+        child: CachedNetworkImage(
+          imageUrl: url, fit: BoxFit.contain,
+          placeholder: (_, _) => const Center(child: CircularProgressIndicator(color: Colors.white)),
+          errorWidget: (_, _, _) => const Center(child: Icon(Icons.broken_image_rounded,
+            color: Colors.white54, size: 64)),
+        ),
+      ),
+    ),
   );
 }

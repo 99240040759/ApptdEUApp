@@ -20,7 +20,7 @@ class AuthService {
   Future<bool> signInWithGoogle() async {
     try {
       final account = await GoogleSignIn.instance.authenticate();
-      // authentication is a sync getter in 7.x — no await
+      // .authentication is sync in google_sign_in 7.x (not a Future)
       final googleAuth = account.authentication;
       final credential = GoogleAuthProvider.credential(
         idToken: googleAuth.idToken,
