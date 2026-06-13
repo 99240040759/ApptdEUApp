@@ -18,13 +18,11 @@ subprojects {
 subprojects {
     project.evaluationDependsOn(":app")
 }
-// Force all plugins to compile against SDK 36
+// Force compileSdk 36 on all plugin subprojects — fires at plugin apply time, not eval time
 subprojects {
-    afterEvaluate {
-        if (extensions.findByName("android") != null) {
-            extensions.configure<com.android.build.gradle.BaseExtension> {
-                compileSdkVersion(36)
-            }
+    plugins.withId("com.android.library") {
+        configure<com.android.build.gradle.LibraryExtension> {
+            compileSdk = 36
         }
     }
 }
