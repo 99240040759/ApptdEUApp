@@ -12,7 +12,7 @@ if (keyPropsFile.exists()) keyProps.load(keyPropsFile.inputStream())
 
 android {
     namespace = "com.apptd.apptd_union"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -33,7 +33,7 @@ android {
     defaultConfig {
         applicationId = "com.apptd.apptd_union"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
