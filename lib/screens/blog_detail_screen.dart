@@ -1,15 +1,17 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_html/flutter_html.dart' as fhtml;
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../config/theme.dart';
 import '../models/blog_post.dart';
 import '../services/firestore_service.dart';
 
-// ── Custom image embed builder ──
+// ── Custom Quill image embed builder ─────────────────────────────────────────
 class _ImageEmbedBuilder extends EmbedBuilder {
   const _ImageEmbedBuilder();
   @override
@@ -36,12 +38,20 @@ class _ImageEmbedBuilder extends EmbedBuilder {
 
 const _embedBuilders = [_ImageEmbedBuilder()];
 
-String _readTime(String text) {
-  final words = text.trim().split(RegExp(r'\s+')).length;
+// Strip HTML tags for plain-text operations (read time, etc.)
+String _stripHtml(String html) => html.replaceAll(RegExp(r'<[^>]+>'), ' ')
+    .replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+
+String _readTime(String content) {
+  final plain = content.contains('<') ? _stripHtml(content) : content;
+  final words = plain.trim().split(RegExp(r'\s+')).length;
   final mins = (words / 200).ceil().clamp(1, 999);
   return '$mins min read';
 }
 
+bool _isHtmlContent(String content) => content.trimLeft().startsWith('<');
+
+// ── Screen ────────────────────────────────────────────────────────────────────
 class BlogDetailScreen extends StatefulWidget {
   final String slug;
   final BlogPost? blog;
@@ -71,11 +81,11 @@ class _BlogDetailScreenState extends State<BlogDetailScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return Scaffold(appBar: AppBar(),
+      return Scaffold(appBar: AppBar(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
         body: const Center(child: CircularProgressIndicator(color: AppColors.primary)));
     }
     if (_blog == null) {
-      return Scaffold(appBar: AppBar(),
+      return Scaffold(appBar: AppBar(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
         body: const Center(child: Text('Post not found')));
     }
     final blog = _blog!;
@@ -93,7 +103,6 @@ class _BlogDetailScreenState extends State<BlogDetailScreen> {
           ],
           flexibleSpace: FlexibleSpaceBar(
             background: Stack(fit: StackFit.expand, children: [
-              // Cover image with Hero
               blog.coverImage.isNotEmpty
                 ? Hero(
                     tag: 'blog_${blog.slug}',
@@ -103,38 +112,20 @@ class _BlogDetailScreenState extends State<BlogDetailScreen> {
                       errorWidget: (_, _, _) => Container(color: AppColors.primary),
                     ),
                   )
-                : Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [AppColors.primary, Color(0xFF7F1D1D)],
-                        begin: Alignment.topLeft, end: Alignment.bottomRight,
-                      ),
-                    ),
-                  ),
-              // ── Status-bar shadow so OS icons stay readable ──
-              Positioned(
-                top: 0, left: 0, right: 0, height: 100,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
+                : Container(decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                      colors: [Colors.black.withAlpha(140), Colors.transparent],
+                      colors: [AppColors.primary, Color(0xFF7F1D1D)],
+                      begin: Alignment.topLeft, end: Alignment.bottomRight,
                     ),
-                  ),
-                ),
-              ),
-              // Bottom gradient for title area readability
-              Positioned(
-                bottom: 0, left: 0, right: 0, height: 80,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter, end: Alignment.topCenter,
-                      colors: [Colors.black.withAlpha(100), Colors.transparent],
-                    ),
-                  ),
-                ),
-              ),
+                  )),
+              Positioned(top: 0, left: 0, right: 0, height: 100,
+                child: DecoratedBox(decoration: BoxDecoration(
+                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                    colors: [Colors.black.withAlpha(140), Colors.transparent])))),
+              Positioned(bottom: 0, left: 0, right: 0, height: 80,
+                child: DecoratedBox(decoration: BoxDecoration(
+                  gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter,
+                    colors: [Colors.black.withAlpha(100), Colors.transparent])))),
             ]),
           ),
         ),
@@ -149,8 +140,7 @@ class _BlogDetailScreenState extends State<BlogDetailScreen> {
                     color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
                   backgroundColor: AppColors.primaryButton,
                   padding: EdgeInsets.zero, visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  side: BorderSide.none,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap, side: BorderSide.none,
                 ),
                 Row(mainAxisSize: MainAxisSize.min, children: [
                   const Icon(Icons.calendar_today_rounded, size: 13, color: AppColors.textMuted),
@@ -166,14 +156,11 @@ class _BlogDetailScreenState extends State<BlogDetailScreen> {
                 ]),
               ]),
               const SizedBox(height: 14),
-              // Title
               Text(blog.title, style: GoogleFonts.inter(
-                fontSize: 23, fontWeight: FontWeight.w800, height: 1.3,
-                color: AppColors.textDark)),
+                fontSize: 23, fontWeight: FontWeight.w800, height: 1.3, color: AppColors.textDark)),
               const SizedBox(height: 16),
               Divider(color: Colors.grey.shade200, height: 1),
-              const SizedBox(height: 16),
-              // Rich content
+              const SizedBox(height: 8),
               _BlogContent(blog: blog),
               const SizedBox(height: 32),
             ]),
@@ -184,6 +171,7 @@ class _BlogDetailScreenState extends State<BlogDetailScreen> {
   }
 }
 
+// ── Content renderer — HTML path (from website) OR Quill path (from app admin) ─
 class _BlogContent extends StatefulWidget {
   final BlogPost blog;
   const _BlogContent({required this.blog});
@@ -192,64 +180,136 @@ class _BlogContent extends StatefulWidget {
 }
 
 class _BlogContentState extends State<_BlogContent> {
-  late final QuillController _ctrl;
+  // Used only when content_delta exists (app-authored content)
+  QuillController? _ctrl;
   final _focus = FocusNode(canRequestFocus: false);
   final _scroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    if (widget.blog.contentDelta != null && widget.blog.contentDelta!.isNotEmpty) {
+    // Only init Quill if we have a proper delta AND content is NOT html
+    if (widget.blog.contentDelta != null && widget.blog.contentDelta!.isNotEmpty
+        && !_isHtmlContent(widget.blog.content)) {
       try {
         _ctrl = QuillController(
           document: Document.fromJson(jsonDecode(widget.blog.contentDelta!)),
           selection: const TextSelection.collapsed(offset: 0));
-        return;
-      } catch (_) {}
+      } catch (_) { _ctrl = null; }
     }
-    final doc = Document();
-    if (widget.blog.content.isNotEmpty) { doc.insert(0, widget.blog.content); }
-    _ctrl = QuillController(document: doc, selection: const TextSelection.collapsed(offset: 0));
   }
 
   @override
-  void dispose() { _ctrl.dispose(); _focus.dispose(); _scroll.dispose(); super.dispose(); }
+  void dispose() { _ctrl?.dispose(); _focus.dispose(); _scroll.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: QuillEditor(
-        controller: _ctrl,
-        focusNode: _focus,
-        scrollController: _scroll,
-        config: QuillEditorConfig(
-          padding: EdgeInsets.zero,
-          expands: false,
-          scrollable: false,
-          embedBuilders: _embedBuilders,
-          customStyles: DefaultStyles(
-            paragraph: DefaultTextBlockStyle(
-              GoogleFonts.inter(fontSize: 16, height: 1.8, color: const Color(0xFF1F2937)),
-              HorizontalSpacing.zero, const VerticalSpacing(2, 2), VerticalSpacing.zero, null,
+    // ── Path A: Quill delta available (app-created content) ──
+    if (_ctrl != null) {
+      return IgnorePointer(
+        child: QuillEditor(
+          controller: _ctrl!,
+          focusNode: _focus,
+          scrollController: _scroll,
+          config: QuillEditorConfig(
+            padding: EdgeInsets.zero, expands: false, scrollable: false,
+            embedBuilders: _embedBuilders,
+            customStyles: DefaultStyles(
+              paragraph: DefaultTextBlockStyle(
+                GoogleFonts.inter(fontSize: 16, height: 1.8, color: const Color(0xFF1F2937)),
+                HorizontalSpacing.zero, const VerticalSpacing(2, 2), VerticalSpacing.zero, null),
+              h1: DefaultTextBlockStyle(
+                GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.textDark),
+                HorizontalSpacing.zero, const VerticalSpacing(20, 6), VerticalSpacing.zero, null),
+              h2: DefaultTextBlockStyle(
+                GoogleFonts.inter(fontSize: 21, fontWeight: FontWeight.w700, color: AppColors.textDark),
+                HorizontalSpacing.zero, const VerticalSpacing(16, 6), VerticalSpacing.zero, null),
+              h3: DefaultTextBlockStyle(
+                GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.textDark),
+                HorizontalSpacing.zero, const VerticalSpacing(14, 4), VerticalSpacing.zero, null),
+              bold: const TextStyle(fontWeight: FontWeight.w700),
+              italic: const TextStyle(fontStyle: FontStyle.italic),
+              underline: const TextStyle(decoration: TextDecoration.underline),
             ),
-            h1: DefaultTextBlockStyle(
-              GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.textDark),
-              HorizontalSpacing.zero, const VerticalSpacing(20, 6), VerticalSpacing.zero, null,
-            ),
-            h2: DefaultTextBlockStyle(
-              GoogleFonts.inter(fontSize: 21, fontWeight: FontWeight.w700, color: AppColors.textDark),
-              HorizontalSpacing.zero, const VerticalSpacing(16, 6), VerticalSpacing.zero, null,
-            ),
-            h3: DefaultTextBlockStyle(
-              GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.textDark),
-              HorizontalSpacing.zero, const VerticalSpacing(14, 4), VerticalSpacing.zero, null,
-            ),
-            bold: const TextStyle(fontWeight: FontWeight.w700),
-            italic: const TextStyle(fontStyle: FontStyle.italic),
-            underline: const TextStyle(decoration: TextDecoration.underline),
           ),
         ),
-      ),
+      );
+    }
+
+    // ── Path B: HTML content from website TipTap ──
+    final htmlContent = widget.blog.content;
+    if (htmlContent.isEmpty) {
+      return Text('No content available.',
+        style: TextStyle(color: Colors.grey.shade500, fontSize: 15));
+    }
+
+    return fhtml.Html(
+      data: htmlContent,
+      style: {
+        'body': fhtml.Style(fontFamily: 'Inter', fontSize: fhtml.FontSize(16), lineHeight: const fhtml.LineHeight(1.8),
+          color: const Color(0xFF1F2937), margin: fhtml.Margins.zero, padding: fhtml.HtmlPaddings.zero),
+        'h1': fhtml.Style(fontSize: fhtml.FontSize(26), fontWeight: FontWeight.w800, color: AppColors.textDark,
+          margin: fhtml.Margins.only(top: 20, bottom: 6)),
+        'h2': fhtml.Style(fontSize: fhtml.FontSize(21), fontWeight: FontWeight.w700, color: AppColors.textDark,
+          margin: fhtml.Margins.only(top: 16, bottom: 6)),
+        'h3': fhtml.Style(fontSize: fhtml.FontSize(17), fontWeight: FontWeight.w600, color: AppColors.textDark,
+          margin: fhtml.Margins.only(top: 14, bottom: 4)),
+        'p': fhtml.Style(margin: fhtml.Margins.only(bottom: 12), lineHeight: const fhtml.LineHeight(1.8)),
+        'a': fhtml.Style(color: AppColors.primary, textDecoration: TextDecoration.underline),
+        'strong': fhtml.Style(fontWeight: FontWeight.w700),
+        'em': fhtml.Style(fontStyle: FontStyle.italic),
+        'blockquote': fhtml.Style(
+          padding: fhtml.HtmlPaddings.only(left: 16),
+          border: const Border(left: BorderSide(color: AppColors.primary, width: 4)),
+          color: Colors.grey.shade700,
+          fontStyle: FontStyle.italic,
+          margin: fhtml.Margins.symmetric(vertical: 12),
+        ),
+        'code': fhtml.Style(
+          backgroundColor: Colors.grey.shade100,
+          fontFamily: 'monospace',
+          fontSize: fhtml.FontSize(13),
+          padding: fhtml.HtmlPaddings.symmetric(horizontal: 4, vertical: 2),
+        ),
+        'pre': fhtml.Style(
+          backgroundColor: const Color(0xFF1E293B),
+          color: const Color(0xFFE2E8F0),
+          fontFamily: 'monospace',
+          fontSize: fhtml.FontSize(13),
+          padding: fhtml.HtmlPaddings.all(14),
+          margin: fhtml.Margins.symmetric(vertical: 12),
+        ),
+        'ul': fhtml.Style(margin: fhtml.Margins.only(bottom: 12, left: 20)),
+        'ol': fhtml.Style(margin: fhtml.Margins.only(bottom: 12, left: 20)),
+        'li': fhtml.Style(margin: fhtml.Margins.only(bottom: 4), lineHeight: const fhtml.LineHeight(1.7)),
+        'img': fhtml.Style(margin: fhtml.Margins.symmetric(vertical: 12)),
+        'hr': fhtml.Style(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
+      },
+      onLinkTap: (url, _, _) {
+        if (url != null) launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      },
+      extensions: [
+        fhtml.TagExtension(
+          tagsToExtend: {'img'},
+          builder: (extContext) {
+            final src = extContext.attributes['src'] ?? '';
+            if (src.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: CachedNetworkImage(
+                  imageUrl: src, fit: BoxFit.contain, width: double.infinity,
+                  placeholder: (_, _) => Container(height: 160, color: Colors.grey.shade100,
+                    child: const Center(child: CircularProgressIndicator(strokeWidth: 2))),
+                  errorWidget: (_, _, _) => Container(height: 80, color: Colors.grey.shade100,
+                    child: const Center(child: Icon(Icons.broken_image_rounded, color: Colors.grey))),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

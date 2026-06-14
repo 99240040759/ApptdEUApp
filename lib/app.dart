@@ -14,11 +14,13 @@ import 'services/updater_service.dart';
 
 class ApptdApp extends StatelessWidget {
   const ApptdApp({super.key});
+  static final navigatorKey = GlobalKey<NavigatorState>();
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
+      navigatorKey: navigatorKey,
       theme: AppTheme.lightTheme,
       home: const MainShell(),
       routes: {

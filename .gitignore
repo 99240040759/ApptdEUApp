@@ -46,6 +46,7 @@ app.*.map.json
 # CI-injected secrets — never commit these
 android/key.properties
 android/app/release.keystore
+# Injected via GOOGLE_SERVICES_JSON_BASE64 GitHub secret — never commit
 android/app/google-services.json
 # Keystore — NEVER push this to GitHub
 *.jks

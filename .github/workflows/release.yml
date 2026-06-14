@@ -33,11 +33,15 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Setup secrets & inject config
+      - name: Inject secrets & Firebase config
         run: |
+          # Keystore for release signing
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
           printf "storePassword=${{ secrets.KEYSTORE_PASSWORD }}\nkeyPassword=${{ secrets.KEY_PASSWORD }}\nkeyAlias=${{ secrets.KEY_ALIAS }}\nstoreFile=release.keystore\n" > android/key.properties
-          sed -i "s|YOUR_WEB_CLIENT_ID_HERE|${{ secrets.GOOGLE_WEB_CLIENT_ID }}|g" android/app/src/main/res/values/strings.xml
+
+          # google-services.json — gitignored, injected at CI time
+          # Secret value: base64 of the full android/app/google-services.json content
+          echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 -d > android/app/google-services.json
 
       - name: Build APK
         run: |
@@ -47,7 +51,7 @@ jobs:
 
       - name: Cleanup secrets
         if: always()
-        run: rm -f android/app/release.keystore android/key.properties
+        run: rm -f android/app/release.keystore android/key.properties android/app/google-services.json
 
       - uses: softprops/action-gh-release@v2
         with:

@@ -20,8 +20,14 @@ class BlogPost {
     return slug.isEmpty ? 'post-${DateTime.now().millisecondsSinceEpoch}' : slug;
   }
 
-  String get displayExcerpt =>
-      excerpt ?? (content.length > 150 ? '${content.substring(0, 150)}...' : content);
+  static String _stripHtml(String html) =>
+      html.replaceAll(RegExp(r'<[^>]+>'), ' ').replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+
+  String get displayExcerpt {
+    final src = excerpt ?? content;
+    final plain = src.contains('<') ? _stripHtml(src) : src;
+    return plain.length > 150 ? '${plain.substring(0, 150)}...' : plain;
+  }
 
   factory BlogPost.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data() as Map<String, dynamic>;
