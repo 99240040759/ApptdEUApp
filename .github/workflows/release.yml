@@ -47,7 +47,7 @@ jobs:
         run: |
           flutter pub get
           flutter build apk --release --obfuscate --split-debug-info=build/debug-info
-          cp build/app/outputs/flutter-apk/app-release.apk "build/app/outputs/flutter-apk/APPTD Employees Union.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/apptd-union.apk
 
       - name: Cleanup secrets
         if: always()
