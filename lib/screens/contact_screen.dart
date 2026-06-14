@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../config/theme.dart';
 
@@ -52,7 +51,7 @@ class ContactScreen extends StatelessWidget {
       child: Row(children: [
         Icon(icon, color: Colors.white, size: 20),
         const SizedBox(width: 10),
-        Text(title, style: GoogleFonts.inter(
+        Text(title, style: TextStyle(fontFamily: 'Inter', 
           color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700)),
       ]),
     );
@@ -73,13 +72,13 @@ class ContactScreen extends StatelessWidget {
               gradient: RadialGradient(colors: [color.withAlpha(220), color]),
               shape: BoxShape.circle,
             ),
-            child: Center(child: Text(initials, style: GoogleFonts.inter(
+            child: Center(child: Text(initials, style: TextStyle(fontFamily: 'Inter', 
               color: Colors.white, fontSize: 17, fontWeight: FontWeight.w700))),
           ),
           const SizedBox(width: 14),
           // Info
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(bearer['name']!, style: GoogleFonts.inter(
+            Text(bearer['name']!, style: TextStyle(fontFamily: 'Inter', 
               fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textDark)),
             const SizedBox(height: 3),
             Row(children: [
@@ -140,7 +139,7 @@ class ContactScreen extends StatelessWidget {
           child: Icon(Icons.location_city_rounded, color: color, size: 22),
         ),
         title: Text('${zone['zone']} Zone',
-          style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w700)),
+          style: TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w700)),
         subtitle: const Text('Zonal Representative',
           style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [

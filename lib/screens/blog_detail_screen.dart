@@ -1,61 +1,17 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter_html/flutter_html.dart' as fhtml;
-import 'package:flutter_quill/flutter_quill.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../config/theme.dart';
 import '../models/blog_post.dart';
 import '../services/firestore_service.dart';
+import '../utils/file_helpers.dart';
 
-// ── Custom Quill image embed builder ─────────────────────────────────────────
-class _ImageEmbedBuilder extends EmbedBuilder {
-  const _ImageEmbedBuilder();
-  @override
-  String get key => BlockEmbed.imageType;
-  @override
-  Widget build(BuildContext context, EmbedContext embedContext) {
-    final url = embedContext.node.value.data as String;
-    if (url.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: CachedNetworkImage(
-          imageUrl: url, fit: BoxFit.contain,
-          placeholder: (_, _) => Container(height: 160, color: Colors.grey.shade100,
-            child: const Center(child: CircularProgressIndicator(strokeWidth: 2))),
-          errorWidget: (_, _, _) => Container(height: 80, color: Colors.grey.shade100,
-            child: const Center(child: Icon(Icons.broken_image_rounded, color: Colors.grey))),
-        ),
-      ),
-    );
-  }
-}
-
-const _embedBuilders = [_ImageEmbedBuilder()];
-
-// Strip HTML tags for plain-text operations (read time, etc.)
-String _stripHtml(String html) => html.replaceAll(RegExp(r'<[^>]+>'), ' ')
-    .replaceAll(RegExp(r'\s{2,}'), ' ').trim();
-
-String _readTime(String content) {
-  final plain = content.contains('<') ? _stripHtml(content) : content;
-  final words = plain.trim().split(RegExp(r'\s+')).length;
-  final mins = (words / 200).ceil().clamp(1, 999);
-  return '$mins min read';
-}
-
-bool _isHtmlContent(String content) => content.trimLeft().startsWith('<');
-
-// ── Screen ────────────────────────────────────────────────────────────────────
 class BlogDetailScreen extends StatefulWidget {
   final String slug;
-  final BlogPost? blog;
-  const BlogDetailScreen({super.key, required this.slug, this.blog});
+  const BlogDetailScreen({super.key, required this.slug});
   @override
   State<BlogDetailScreen> createState() => _BlogDetailScreenState();
 }
@@ -63,53 +19,58 @@ class BlogDetailScreen extends StatefulWidget {
 class _BlogDetailScreenState extends State<BlogDetailScreen> {
   BlogPost? _blog;
   bool _loading = true;
+  String? _error;
 
   @override
-  void initState() {
-    super.initState();
-    if (widget.blog != null) { _blog = widget.blog; _loading = false; }
-    else { _fetchBlog(); }
-  }
+  void initState() { super.initState(); _load(); }
 
-  Future<void> _fetchBlog() async {
+  Future<void> _load() async {
     try {
       final blog = await FirestoreService().getBlogBySlug(widget.slug);
       if (mounted) setState(() { _blog = blog; _loading = false; });
-    } catch (_) { if (mounted) setState(() => _loading = false); }
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  String _readTime(String html) {
+    final words = html.replaceAll(RegExp(r'<[^>]*>'), ' ').split(RegExp(r'\s+')).length;
+    final mins = (words / 200).ceil();
+    return '$mins min read';
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return Scaffold(appBar: AppBar(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
-        body: const Center(child: CircularProgressIndicator(color: AppColors.primary)));
-    }
-    if (_blog == null) {
-      return Scaffold(appBar: AppBar(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
-        body: const Center(child: Text('Post not found')));
-    }
+    if (_loading) { return const Scaffold(body: Center(child: CircularProgressIndicator())); }
+    if (_error != null || _blog == null) { return Scaffold(
+      appBar: AppBar(title: const Text('Blog')),
+      body: Center(child: Text(_error ?? 'Blog not found', style: const TextStyle(color: Colors.grey))),
+    ); }
     final blog = _blog!;
     return Scaffold(
       body: CustomScrollView(slivers: [
         SliverAppBar(
-          expandedHeight: 280, pinned: true,
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
+          expandedHeight: 260,
+          pinned: true,
           actions: [
             IconButton(
               icon: const Icon(Icons.share_rounded),
+              tooltip: 'Share',
               onPressed: () => Share.share('${blog.title}\nhttps://apptd.org/blog/${blog.slug}'),
             ),
           ],
           flexibleSpace: FlexibleSpaceBar(
             background: Stack(fit: StackFit.expand, children: [
               blog.coverImage.isNotEmpty
-                ? Hero(
-                    tag: 'blog_${blog.slug}',
-                    child: CachedNetworkImage(
-                      imageUrl: blog.coverImage, fit: BoxFit.cover, width: double.infinity,
-                      placeholder: (_, _) => Container(color: AppColors.primary),
-                      errorWidget: (_, _, _) => Container(color: AppColors.primary),
+                ? GestureDetector(
+                    onTap: () => openImageViewer(context, blog.coverImage, blog.title),
+                    child: Hero(
+                      tag: 'blog_${blog.slug}',
+                      child: CachedNetworkImage(
+                        imageUrl: blog.coverImage, fit: BoxFit.cover, width: double.infinity,
+                        placeholder: (_, _) => Container(color: AppColors.primary),
+                        errorWidget: (_, _, _) => Container(color: AppColors.primary),
+                      ),
                     ),
                   )
                 : Container(decoration: const BoxDecoration(
@@ -131,9 +92,8 @@ class _BlogDetailScreenState extends State<BlogDetailScreen> {
         ),
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // Category + date + read time
               Wrap(spacing: 8, runSpacing: 6, children: [
                 Chip(
                   label: Text(blog.category, style: const TextStyle(
@@ -156,160 +116,41 @@ class _BlogDetailScreenState extends State<BlogDetailScreen> {
                 ]),
               ]),
               const SizedBox(height: 14),
-              Text(blog.title, style: GoogleFonts.inter(
-                fontSize: 23, fontWeight: FontWeight.w800, height: 1.3, color: AppColors.textDark)),
+              Text(blog.title, style: const TextStyle(
+                fontFamily: 'Inter', fontSize: 23, fontWeight: FontWeight.w800,
+                height: 1.3, color: AppColors.textDark)),
               const SizedBox(height: 16),
               Divider(color: Colors.grey.shade200, height: 1),
-              const SizedBox(height: 8),
-              _BlogContent(blog: blog),
-              const SizedBox(height: 32),
+              const SizedBox(height: 12),
+              if (blog.content.isEmpty)
+                Text('No content available.', style: TextStyle(color: Colors.grey.shade500, fontSize: 15))
+              else
+                HtmlWidget(
+                  blog.content,
+                  textStyle: const TextStyle(fontFamily: 'Inter', fontSize: 16, height: 1.8, color: Color(0xFF1F2937)),
+                  customStylesBuilder: (el) => switch (el.localName) {
+                    'h1' => {'font-size': '26px', 'font-weight': '800', 'margin-top': '20px', 'margin-bottom': '6px'},
+                    'h2' => {'font-size': '21px', 'font-weight': '700', 'margin-top': '16px', 'margin-bottom': '6px'},
+                    'h3' => {'font-size': '17px', 'font-weight': '600', 'margin-top': '14px', 'margin-bottom': '4px'},
+                    'p'  => {'margin-bottom': '12px', 'line-height': '1.8'},
+                    'a'  => {'color': '#B91C1C'},
+                    'blockquote' => {'border-left': '4px solid #B91C1C', 'padding-left': '16px', 'font-style': 'italic', 'color': '#4B5563'},
+                    'code' => {'background-color': '#F3F4F6', 'font-family': 'monospace', 'font-size': '13px', 'padding': '2px 4px'},
+                    'pre'  => {'background-color': '#1E293B', 'color': '#E2E8F0', 'font-family': 'monospace', 'font-size': '13px', 'padding': '14px'},
+                    'ul' || 'ol' => {'margin-bottom': '12px', 'padding-left': '20px'},
+                    'li' => {'margin-bottom': '4px'},
+                    _ => null,
+                  },
+                  onTapUrl: (url) async {
+                    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                    return true;
+                  },
+                  renderMode: RenderMode.column,
+                ),
             ]),
           ),
         ),
       ]),
-    );
-  }
-}
-
-// ── Content renderer — HTML path (from website) OR Quill path (from app admin) ─
-class _BlogContent extends StatefulWidget {
-  final BlogPost blog;
-  const _BlogContent({required this.blog});
-  @override
-  State<_BlogContent> createState() => _BlogContentState();
-}
-
-class _BlogContentState extends State<_BlogContent> {
-  // Used only when content_delta exists (app-authored content)
-  QuillController? _ctrl;
-  final _focus = FocusNode(canRequestFocus: false);
-  final _scroll = ScrollController();
-
-  @override
-  void initState() {
-    super.initState();
-    // Only init Quill if we have a proper delta AND content is NOT html
-    if (widget.blog.contentDelta != null && widget.blog.contentDelta!.isNotEmpty
-        && !_isHtmlContent(widget.blog.content)) {
-      try {
-        _ctrl = QuillController(
-          document: Document.fromJson(jsonDecode(widget.blog.contentDelta!)),
-          selection: const TextSelection.collapsed(offset: 0));
-      } catch (_) { _ctrl = null; }
-    }
-  }
-
-  @override
-  void dispose() { _ctrl?.dispose(); _focus.dispose(); _scroll.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) {
-    // ── Path A: Quill delta available (app-created content) ──
-    if (_ctrl != null) {
-      return IgnorePointer(
-        child: QuillEditor(
-          controller: _ctrl!,
-          focusNode: _focus,
-          scrollController: _scroll,
-          config: QuillEditorConfig(
-            padding: EdgeInsets.zero, expands: false, scrollable: false,
-            embedBuilders: _embedBuilders,
-            customStyles: DefaultStyles(
-              paragraph: DefaultTextBlockStyle(
-                GoogleFonts.inter(fontSize: 16, height: 1.8, color: const Color(0xFF1F2937)),
-                HorizontalSpacing.zero, const VerticalSpacing(2, 2), VerticalSpacing.zero, null),
-              h1: DefaultTextBlockStyle(
-                GoogleFonts.inter(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.textDark),
-                HorizontalSpacing.zero, const VerticalSpacing(20, 6), VerticalSpacing.zero, null),
-              h2: DefaultTextBlockStyle(
-                GoogleFonts.inter(fontSize: 21, fontWeight: FontWeight.w700, color: AppColors.textDark),
-                HorizontalSpacing.zero, const VerticalSpacing(16, 6), VerticalSpacing.zero, null),
-              h3: DefaultTextBlockStyle(
-                GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.textDark),
-                HorizontalSpacing.zero, const VerticalSpacing(14, 4), VerticalSpacing.zero, null),
-              bold: const TextStyle(fontWeight: FontWeight.w700),
-              italic: const TextStyle(fontStyle: FontStyle.italic),
-              underline: const TextStyle(decoration: TextDecoration.underline),
-            ),
-          ),
-        ),
-      );
-    }
-
-    // ── Path B: HTML content from website TipTap ──
-    final htmlContent = widget.blog.content;
-    if (htmlContent.isEmpty) {
-      return Text('No content available.',
-        style: TextStyle(color: Colors.grey.shade500, fontSize: 15));
-    }
-
-    return fhtml.Html(
-      data: htmlContent,
-      style: {
-        'body': fhtml.Style(fontFamily: 'Inter', fontSize: fhtml.FontSize(16), lineHeight: const fhtml.LineHeight(1.8),
-          color: const Color(0xFF1F2937), margin: fhtml.Margins.zero, padding: fhtml.HtmlPaddings.zero),
-        'h1': fhtml.Style(fontSize: fhtml.FontSize(26), fontWeight: FontWeight.w800, color: AppColors.textDark,
-          margin: fhtml.Margins.only(top: 20, bottom: 6)),
-        'h2': fhtml.Style(fontSize: fhtml.FontSize(21), fontWeight: FontWeight.w700, color: AppColors.textDark,
-          margin: fhtml.Margins.only(top: 16, bottom: 6)),
-        'h3': fhtml.Style(fontSize: fhtml.FontSize(17), fontWeight: FontWeight.w600, color: AppColors.textDark,
-          margin: fhtml.Margins.only(top: 14, bottom: 4)),
-        'p': fhtml.Style(margin: fhtml.Margins.only(bottom: 12), lineHeight: const fhtml.LineHeight(1.8)),
-        'a': fhtml.Style(color: AppColors.primary, textDecoration: TextDecoration.underline),
-        'strong': fhtml.Style(fontWeight: FontWeight.w700),
-        'em': fhtml.Style(fontStyle: FontStyle.italic),
-        'blockquote': fhtml.Style(
-          padding: fhtml.HtmlPaddings.only(left: 16),
-          border: const Border(left: BorderSide(color: AppColors.primary, width: 4)),
-          color: Colors.grey.shade700,
-          fontStyle: FontStyle.italic,
-          margin: fhtml.Margins.symmetric(vertical: 12),
-        ),
-        'code': fhtml.Style(
-          backgroundColor: Colors.grey.shade100,
-          fontFamily: 'monospace',
-          fontSize: fhtml.FontSize(13),
-          padding: fhtml.HtmlPaddings.symmetric(horizontal: 4, vertical: 2),
-        ),
-        'pre': fhtml.Style(
-          backgroundColor: const Color(0xFF1E293B),
-          color: const Color(0xFFE2E8F0),
-          fontFamily: 'monospace',
-          fontSize: fhtml.FontSize(13),
-          padding: fhtml.HtmlPaddings.all(14),
-          margin: fhtml.Margins.symmetric(vertical: 12),
-        ),
-        'ul': fhtml.Style(margin: fhtml.Margins.only(bottom: 12, left: 20)),
-        'ol': fhtml.Style(margin: fhtml.Margins.only(bottom: 12, left: 20)),
-        'li': fhtml.Style(margin: fhtml.Margins.only(bottom: 4), lineHeight: const fhtml.LineHeight(1.7)),
-        'img': fhtml.Style(margin: fhtml.Margins.symmetric(vertical: 12)),
-        'hr': fhtml.Style(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
-      },
-      onLinkTap: (url, _, _) {
-        if (url != null) launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-      },
-      extensions: [
-        fhtml.TagExtension(
-          tagsToExtend: {'img'},
-          builder: (extContext) {
-            final src = extContext.attributes['src'] ?? '';
-            if (src.isEmpty) return const SizedBox.shrink();
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: CachedNetworkImage(
-                  imageUrl: src, fit: BoxFit.contain, width: double.infinity,
-                  placeholder: (_, _) => Container(height: 160, color: Colors.grey.shade100,
-                    child: const Center(child: CircularProgressIndicator(strokeWidth: 2))),
-                  errorWidget: (_, _, _) => Container(height: 80, color: Colors.grey.shade100,
-                    child: const Center(child: Icon(Icons.broken_image_rounded, color: Colors.grey))),
-                ),
-              ),
-            );
-          },
-        ),
-      ],
     );
   }
 }

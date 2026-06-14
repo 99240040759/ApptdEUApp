@@ -6,15 +6,13 @@ import 'app.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // google-services.json is compiled into Android resources by the Gradle plugin.
-  // No options needed — Firebase reads config automatically.
   await Firebase.initializeApp();
-  try { await AuthService().init(); } catch (e) { debugPrint('GoogleSignIn init skipped: $e'); }
-  try {
-    await NotificationService.init();
+  // Run in background — never block app startup
+  AuthService().init().catchError((_) {});
+  NotificationService.init().then((_) {
     NotificationService.onNotificationTap = (route) {
       ApptdApp.navigatorKey.currentState?.pushNamed(route);
     };
-  } catch (e) { debugPrint('Notification init skipped: $e'); }
+  }).catchError((_) {});
   runApp(const ApptdApp());
 }

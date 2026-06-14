@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'config/theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/blog_detail_screen.dart';
@@ -72,7 +71,7 @@ class MainShellState extends State<MainShell> {
           ),
           const SizedBox(width: 10),
           Expanded(child: Text(AppConstants.appName,
-            style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+            style: TextStyle(fontFamily: 'Inter', fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
             overflow: TextOverflow.ellipsis)),
         ]),
       ),

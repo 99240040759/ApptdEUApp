@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../config/theme.dart';
 
 // ── Shared: download + open a file (PDF) ─────────────────────────────────────
@@ -93,26 +94,104 @@ class _DownloadDialogState extends State<_DownloadDialog> {
   );
 }
 
-// ── Full-screen image viewer ──────────────────────────────────────────────────
-class ImageViewerPage extends StatelessWidget {
+// ── Full-screen image viewer with share + download ───────────────────────────
+class ImageViewerPage extends StatefulWidget {
   final String url, title;
   const ImageViewerPage({super.key, required this.url, required this.title});
   @override
+  State<ImageViewerPage> createState() => _ImageViewerPageState();
+}
+
+class _ImageViewerPageState extends State<ImageViewerPage> {
+  bool _downloading = false;
+
+  Future<void> _download() async {
+    if (_downloading) return;
+    setState(() => _downloading = true);
+    try {
+      final dir = await getTemporaryDirectory();
+      final rawName = widget.url.split('/').last.split('?').first;
+      final ext = rawName.contains('.') ? rawName.split('.').last : 'jpg';
+      final file = File('${dir.path}/${DateTime.now().millisecondsSinceEpoch}.$ext');
+      final res = await http.get(Uri.parse(widget.url));
+      await file.writeAsBytes(res.bodyBytes);
+      if (mounted) { setState(() => _downloading = false); await OpenFilex.open(file.path); }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _downloading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Download failed: $e')));
+      }
+    }
+  }
+
+  void _share() => Share.share('${widget.title}\n${widget.url}');
+
+  @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: Colors.black,
+    extendBodyBehindAppBar: true,
     appBar: AppBar(
-      backgroundColor: Colors.black, foregroundColor: Colors.white,
-      title: Text(title, overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 14)),
+      backgroundColor: Colors.black54,
+      foregroundColor: Colors.white,
+      elevation: 0,
+      title: Text(widget.title, overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 14, color: Colors.white)),
     ),
-    body: InteractiveViewer(
-      minScale: 0.5, maxScale: 4.0,
-      child: Center(child: CachedNetworkImage(
-        imageUrl: url, fit: BoxFit.contain,
-        placeholder: (_, _) => const Center(child: CircularProgressIndicator(color: Colors.white)),
-        errorWidget: (_, _, _) => const Center(child: Icon(Icons.broken_image_rounded,
-          color: Colors.white54, size: 64)),
-      )),
+    body: Stack(children: [
+      InteractiveViewer(
+        minScale: 0.5, maxScale: 4.0,
+        child: Center(child: CachedNetworkImage(
+          imageUrl: widget.url, fit: BoxFit.contain,
+          placeholder: (_, _) => const Center(child: CircularProgressIndicator(color: Colors.white)),
+          errorWidget: (_, _, _) => const Center(child: Icon(Icons.broken_image_rounded,
+            color: Colors.white54, size: 64)),
+        )),
+      ),
+      Positioned(bottom: 0, left: 0, right: 0,
+        child: Container(
+          padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + MediaQuery.of(context).padding.bottom),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter, end: Alignment.topCenter,
+              colors: [Colors.black.withAlpha(200), Colors.transparent])),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            _ActionBtn(
+              icon: Icons.share_rounded, label: 'Share',
+              onTap: _share,
+            ),
+            const SizedBox(width: 24),
+            _ActionBtn(
+              icon: _downloading ? Icons.hourglass_top_rounded : Icons.download_rounded,
+              label: _downloading ? 'Saving…' : 'Save',
+              onTap: _downloading ? null : _download,
+            ),
+          ]),
+        ),
+      ),
+    ]),
+  );
+}
+
+class _ActionBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  const _ActionBtn({required this.icon, required this.label, required this.onTap});
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withAlpha(30),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: Colors.white30),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, color: Colors.white, size: 18),
+        const SizedBox(width: 8),
+        Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+      ]),
     ),
   );
 }

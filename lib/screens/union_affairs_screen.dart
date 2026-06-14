@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:shimmer/shimmer.dart';
 import '../config/theme.dart';
 import '../models/union_affair.dart';
@@ -169,7 +168,7 @@ class _UnionCardState extends State<_UnionCard> {
                 // Content
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, height: 1.3)),
+                    style: TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w600, height: 1.3)),
                   const SizedBox(height: 5),
                   Row(children: [
                     Container(

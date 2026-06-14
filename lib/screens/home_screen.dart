@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
 import '../config/theme.dart';
@@ -56,7 +55,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(width: 4, height: 20,
                 decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(2))),
               const SizedBox(width: 10),
-              Text('Latest Posts', style: GoogleFonts.inter(
+              Text('Latest Posts', style: TextStyle(fontFamily: 'Inter', 
                 fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textDark)),
             ]),
           ),
@@ -123,7 +122,7 @@ class _BlogCardState extends State<_BlogCard> {
 
   void _open() {
     Navigator.push(context, MaterialPageRoute(
-      builder: (_) => BlogDetailScreen(slug: widget.blog.slug, blog: widget.blog),
+      builder: (_) => BlogDetailScreen(slug: widget.blog.slug),
     ));
   }
 
@@ -186,7 +185,7 @@ class _BlogCardState extends State<_BlogCard> {
                   ]),
                   const SizedBox(height: 10),
                   Text(blog.title, maxLines: 2, overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.inter(
+                    style: TextStyle(fontFamily: 'Inter', 
                       fontSize: 16, fontWeight: FontWeight.w700, height: 1.35,
                       color: AppColors.textDark)),
                   const SizedBox(height: 6),

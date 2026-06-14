@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../config/theme.dart';
 import '../../models/blog_post.dart';
@@ -11,7 +10,7 @@ import '../../models/circular.dart';
 import '../../models/union_affair.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
-import 'blog_editor_screen.dart';
+
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -102,11 +101,6 @@ class _BlogsTabState extends State<_BlogsTab> with AutomaticKeepAliveClientMixin
     } catch (_) { if (mounted) setState(() => _loading = false); }
   }
 
-  Future<void> _openEditor([BlogPost? blog]) async {
-    final result = await Navigator.push<bool>(context,
-      MaterialPageRoute(builder: (_) => BlogEditorScreen(blog: blog)));
-    if (result == true) _load();
-  }
 
   Future<void> _delete(BlogPost b) async {
     final ok = await _confirmDelete(context, b.title);
@@ -130,26 +124,18 @@ class _BlogsTabState extends State<_BlogsTab> with AutomaticKeepAliveClientMixin
                     itemCount: _blogs.length,
                     itemBuilder: (_, i) => _AdminBlogCard(
                       blog: _blogs[i],
-                      onEdit: () => _openEditor(_blogs[i]),
                       onDelete: () => _delete(_blogs[i]),
                     ),
                   ),
                 ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppColors.primaryButton,
-        foregroundColor: Colors.white,
-        onPressed: () => _openEditor(),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('New Post', style: TextStyle(fontWeight: FontWeight.w600)),
-      ),
     );
   }
 }
 
 class _AdminBlogCard extends StatelessWidget {
   final BlogPost blog;
-  final VoidCallback onEdit, onDelete;
-  const _AdminBlogCard({required this.blog, required this.onEdit, required this.onDelete});
+  final VoidCallback onDelete;
+  const _AdminBlogCard({required this.blog, required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -166,26 +152,20 @@ class _AdminBlogCard extends StatelessWidget {
           child: const Icon(Icons.article_rounded, color: AppColors.primary, size: 22),
         ),
         title: Text(blog.title,
-          style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
+          style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 14),
           maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text(
           '${blog.category} · ${DateFormat('MMM d, yyyy').format(blog.createdAt)}',
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          _iconBtn(Icons.edit_rounded, AppColors.quickLink, onEdit, 'Edit'),
-          _iconBtn(Icons.delete_rounded, Colors.red.shade400, onDelete, 'Delete'),
-        ]),
+        trailing: IconButton(
+          icon: Icon(Icons.delete_rounded, size: 20, color: Colors.red.shade400),
+          onPressed: onDelete,
+          tooltip: 'Delete',
+          visualDensity: VisualDensity.compact,
+        ),
       ),
     );
   }
-
-  Widget _iconBtn(IconData icon, Color color, VoidCallback onTap, String tooltip) =>
-    IconButton(
-      icon: Icon(icon, size: 20, color: color),
-      onPressed: onTap,
-      tooltip: tooltip,
-      visualDensity: VisualDensity.compact,
-    );
 }
 
 // ═══════════════════════════════════════════════
@@ -285,7 +265,7 @@ class _FilesTabState extends State<_FilesTab> with AutomaticKeepAliveClientMixin
                             child: Icon(_icon(type), color: _iconColor(type), size: 22),
                           ),
                           title: Text(_title(item),
-                            style: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 14),
+                            style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 14),
                             maxLines: 1, overflow: TextOverflow.ellipsis),
                           subtitle: Text(
                             '${type.toUpperCase()} · ${_date(item)}',
@@ -398,7 +378,7 @@ class _UploadSheetState extends State<_UploadSheet> {
           decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
         const SizedBox(height: 16),
         Text('Upload $sheetLabel',
-          style: GoogleFonts.inter(fontSize: 17, fontWeight: FontWeight.w700)),
+          style: TextStyle(fontFamily: 'Inter', fontSize: 17, fontWeight: FontWeight.w700)),
         const SizedBox(height: 18),
 
         // Title field
