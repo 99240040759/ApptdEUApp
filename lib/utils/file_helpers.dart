@@ -43,27 +43,32 @@ class _DownloadDialogState extends State<_DownloadDialog> {
   void initState() { super.initState(); _download(); }
 
   Future<void> _download() async {
+    // FIX: create client explicitly so it can be closed in finally (no socket leak)
+    final client = http.Client();
     try {
       final req = http.Request('GET', Uri.parse(widget.url));
-      final resp = await http.Client().send(req);
+      final resp = await client.send(req);
       final total = resp.contentLength ?? 0;
       var received = 0;
-      final chunks = <int>[];
-      await for (final chunk in resp.stream) {
-        if (_cancelled) break;
-        chunks.addAll(chunk);
-        received += chunk.length;
-        if (mounted) setState(() => _progress = total > 0 ? received / total : null);
-      }
-      if (_cancelled || !mounted) return;
+      // FIX: stream directly to file instead of accumulating in List<int> RAM
       final rawName = widget.url.split('/').last.split('?').first;
       final ext = rawName.contains('.') ? rawName.split('.').last : 'pdf';
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/${DateTime.now().millisecondsSinceEpoch}.$ext');
-      await file.writeAsBytes(chunks);
+      final sink = file.openWrite();
+      await for (final chunk in resp.stream) {
+        if (_cancelled) break;
+        sink.add(chunk);
+        received += chunk.length;
+        if (mounted) setState(() => _progress = total > 0 ? received / total : null);
+      }
+      await sink.close();
+      if (_cancelled || !mounted) return;
       if (mounted) Navigator.pop(context, file.path);
     } catch (_) {
       if (mounted) Navigator.pop(context, null);
+    } finally {
+      client.close(); // Always close — prevents socket leak
     }
   }
 
@@ -108,19 +113,23 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
   Future<void> _download() async {
     if (_downloading) return;
     setState(() => _downloading = true);
+    // FIX: use explicit client with proper close
+    final client = http.Client();
     try {
       final dir = await getTemporaryDirectory();
       final rawName = widget.url.split('/').last.split('?').first;
       final ext = rawName.contains('.') ? rawName.split('.').last : 'jpg';
       final file = File('${dir.path}/${DateTime.now().millisecondsSinceEpoch}.$ext');
-      final res = await http.get(Uri.parse(widget.url));
-      await file.writeAsBytes(res.bodyBytes);
+      final resp = await client.get(Uri.parse(widget.url));
+      await file.writeAsBytes(resp.bodyBytes);
       if (mounted) { setState(() => _downloading = false); await OpenFilex.open(file.path); }
     } catch (e) {
       if (mounted) {
         setState(() => _downloading = false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Download failed: $e')));
       }
+    } finally {
+      client.close();
     }
   }
 
@@ -131,9 +140,7 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
     backgroundColor: Colors.black,
     extendBodyBehindAppBar: true,
     appBar: AppBar(
-      backgroundColor: Colors.black54,
-      foregroundColor: Colors.white,
-      elevation: 0,
+      backgroundColor: Colors.black54, foregroundColor: Colors.white, elevation: 0,
       title: Text(widget.title, overflow: TextOverflow.ellipsis,
         style: const TextStyle(fontSize: 14, color: Colors.white)),
     ),
@@ -155,10 +162,7 @@ class _ImageViewerPageState extends State<ImageViewerPage> {
               begin: Alignment.bottomCenter, end: Alignment.topCenter,
               colors: [Colors.black.withAlpha(200), Colors.transparent])),
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            _ActionBtn(
-              icon: Icons.share_rounded, label: 'Share',
-              onTap: _share,
-            ),
+            _ActionBtn(icon: Icons.share_rounded, label: 'Share', onTap: _share),
             const SizedBox(width: 24),
             _ActionBtn(
               icon: _downloading ? Icons.hourglass_top_rounded : Icons.download_rounded,

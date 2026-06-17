@@ -1,8 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shimmer/shimmer.dart';
 import '../config/theme.dart';
-import '../models/union_affair.dart';
+import '../models/file_item.dart';
 import '../services/firestore_service.dart';
 import '../utils/file_helpers.dart';
 
@@ -13,47 +14,59 @@ class UnionAffairsScreen extends StatefulWidget {
 }
 
 class _UnionAffairsScreenState extends State<UnionAffairsScreen> {
-  List<UnionAffair>? _items;
+  List<FileItem>? _items;
   bool _loading = true;
+  String? _error;
   final _player = AudioPlayer();
   String? _playingId;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  // FIX: store subscriptions so they can be properly cancelled in dispose
+  StreamSubscription? _posSub, _durSub, _completeSub;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _player.onPositionChanged.listen((p) { if (mounted) setState(() => _position = p); });
-    _player.onDurationChanged.listen((d) { if (mounted) setState(() => _duration = d); });
-    _player.onPlayerComplete.listen((_) {
+    _posSub = _player.onPositionChanged.listen((p) { if (mounted) setState(() => _position = p); });
+    _durSub = _player.onDurationChanged.listen((d) { if (mounted) setState(() => _duration = d); });
+    _completeSub = _player.onPlayerComplete.listen((_) {
       if (mounted) setState(() { _playingId = null; _position = Duration.zero; });
     });
   }
 
   @override
-  void dispose() { _player.dispose(); super.dispose(); }
+  void dispose() {
+    // FIX: cancel all subscriptions before disposing player
+    _posSub?.cancel(); _durSub?.cancel(); _completeSub?.cancel();
+    _player.dispose();
+    super.dispose();
+  }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; _error = null; });
     try {
       final list = await FirestoreService().getUnionAffairs();
       if (mounted) setState(() { _items = list; _loading = false; });
-    } catch (_) { if (mounted) setState(() => _loading = false); }
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
   }
 
-  Future<void> _toggleAudio(UnionAffair item) async {
+  Future<void> _toggleAudio(FileItem item) async {
     if (_playingId == item.id) {
       await _player.pause();
       setState(() => _playingId = null);
     } else {
+      // FIX: reset both position and duration before switching tracks
+      setState(() { _position = Duration.zero; _duration = Duration.zero; });
       await _player.stop();
       await _player.play(UrlSource(item.fileUrl));
-      setState(() { _playingId = item.id; _position = Duration.zero; });
+      setState(() => _playingId = item.id);
     }
   }
 
-  void _openFile(UnionAffair item) {
+  void _openFile(FileItem item) {
     if (item.fileType == 'image') {
       openImageViewer(context, item.fileUrl, item.title);
     } else if (item.fileType == 'pdf') {
@@ -69,26 +82,50 @@ class _UnionAffairsScreenState extends State<UnionAffairsScreen> {
         ? ListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             itemCount: 5, itemBuilder: (_, _) => _shimmer())
-        : (_items == null || _items!.isEmpty)
-          ? ListView(children: const [SizedBox(height: 120), Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.folder_open_rounded, size: 56, color: AppColors.textMuted),
-              SizedBox(height: 8),
-              Text('No union affairs yet', style: TextStyle(color: AppColors.textMuted)),
-            ]))])
-          : ListView.builder(
-              itemCount: _items!.length,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              itemBuilder: (_, i) => _UnionCard(
-                item: _items![i],
-                isPlaying: _playingId == _items![i].id,
-                position: _position,
-                duration: _duration,
-                onTap: () => _items![i].fileType == 'audio'
-                    ? _toggleAudio(_items![i])
-                    : _openFile(_items![i]),
-                onSeek: (v) => _player.seek(Duration(milliseconds: (v * _duration.inMilliseconds).toInt())),
+        : _error != null
+          ? ListView(children: [
+              const SizedBox(height: 80),
+              Center(child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.wifi_off_rounded, size: 56, color: AppColors.textMuted),
+                  const SizedBox(height: 10),
+                  const Text('Failed to load', style: TextStyle(color: AppColors.textMuted, fontSize: 15)),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Retry'),
+                    style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                  ),
+                ]),
+              )),
+            ])
+          : (_items == null || _items!.isEmpty)
+            ? ListView(children: const [SizedBox(height: 120), Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.folder_open_rounded, size: 56, color: AppColors.textMuted),
+                SizedBox(height: 8),
+                Text('No union affairs yet', style: TextStyle(color: AppColors.textMuted)),
+              ]))])
+            : ListView.builder(
+                itemCount: _items!.length,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                itemBuilder: (_, i) => _UnionCard(
+                  item: _items![i],
+                  isPlaying: _playingId == _items![i].id,
+                  position: _position,
+                  duration: _duration,
+                  onTap: () => _items![i].fileType == 'audio'
+                      ? _toggleAudio(_items![i])
+                      : _openFile(_items![i]),
+                  // FIX: guard seek when duration not yet known
+                  onSeek: (v) {
+                    if (_duration > Duration.zero) {
+                      _player.seek(Duration(milliseconds: (v * _duration.inMilliseconds).toInt()));
+                    }
+                  },
+                ),
               ),
-            ),
     );
   }
 
@@ -113,7 +150,7 @@ class _UnionAffairsScreenState extends State<UnionAffairsScreen> {
 
 // ── Per-item card ──
 class _UnionCard extends StatefulWidget {
-  final UnionAffair item;
+  final FileItem item;
   final bool isPlaying;
   final Duration position, duration;
   final VoidCallback onTap;
@@ -158,14 +195,10 @@ class _UnionCardState extends State<_UnionCard> {
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
               child: Row(children: [
-                // Icon box
-                Container(
-                  width: 50, height: 50,
+                Container(width: 50, height: 50,
                   decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(12)),
-                  child: Icon(iconData, color: iconColor, size: 26),
-                ),
+                  child: Icon(iconData, color: iconColor, size: 26)),
                 const SizedBox(width: 14),
-                // Content
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w600, height: 1.3)),
@@ -178,8 +211,7 @@ class _UnionCardState extends State<_UnionCard> {
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: iconColor.withAlpha(50)),
                       ),
-                      child: Text(typeLabel, style: TextStyle(
-                        fontSize: 10, fontWeight: FontWeight.w700, color: iconColor)),
+                      child: Text(typeLabel, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: iconColor)),
                     ),
                     const SizedBox(width: 8),
                     Icon(Icons.calendar_today_rounded, size: 11, color: AppColors.textMuted),
@@ -187,7 +219,6 @@ class _UnionCardState extends State<_UnionCard> {
                     Text(item.date, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
                   ]),
                 ])),
-                // Action icon
                 if (isAudio)
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
@@ -199,10 +230,7 @@ class _UnionCardState extends State<_UnionCard> {
                 else
                   Container(
                     width: 34, height: 34,
-                    decoration: BoxDecoration(
-                      color: iconColor.withAlpha(15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                    decoration: BoxDecoration(color: iconColor.withAlpha(15), borderRadius: BorderRadius.circular(10)),
                     child: Icon(isPdf ? Icons.open_in_new_rounded : Icons.open_in_full_rounded,
                       size: 16, color: iconColor),
                   ),
@@ -249,4 +277,3 @@ class _UnionCardState extends State<_UnionCard> {
 
   String _fmt(Duration d) => '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
 }
-

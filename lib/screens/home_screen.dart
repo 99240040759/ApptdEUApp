@@ -16,16 +16,19 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   List<BlogPost>? _blogs;
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() { super.initState(); _load(); }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; _error = null; });
     try {
       final blogs = await FirestoreService().getBlogs();
       if (mounted) setState(() { _blogs = blogs; _loading = false; });
-    } catch (_) { if (mounted) setState(() => _loading = false); }
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
   }
 
   @override
@@ -34,15 +37,14 @@ class _HomeScreenState extends State<HomeScreen> {
       color: AppColors.primary,
       onRefresh: _load,
       child: CustomScrollView(slivers: [
-        // ── Full-width banner (no cropping) ──
+        // ── Full-width banner ──
         SliverToBoxAdapter(
           child: Container(
             color: AppColors.primary,
             width: double.infinity,
             child: Image.asset(
               'assets/images/banner.png',
-              width: double.infinity,
-              fit: BoxFit.fitWidth,
+              width: double.infinity, fit: BoxFit.fitWidth,
               errorBuilder: (_, _, _) => Container(height: 120, color: AppColors.primary),
             ),
           ),
@@ -55,7 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(width: 4, height: 20,
                 decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(2))),
               const SizedBox(width: 10),
-              Text('Latest Posts', style: TextStyle(fontFamily: 'Inter', 
+              Text('Latest Posts', style: TextStyle(fontFamily: 'Inter',
                 fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textDark)),
             ]),
           ),
@@ -64,6 +66,28 @@ class _HomeScreenState extends State<HomeScreen> {
         if (_loading)
           SliverList(delegate: SliverChildBuilderDelegate(
             (_, i) => _shimmerCard(), childCount: 4))
+        else if (_error != null)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.wifi_off_rounded, size: 56, color: AppColors.textMuted),
+                const SizedBox(height: 10),
+                const Text('Failed to load posts', style: TextStyle(color: AppColors.textMuted, fontSize: 15)),
+                const SizedBox(height: 4),
+                Text(_error!, maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12), textAlign: TextAlign.center),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _load,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Retry'),
+                  style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                ),
+              ]),
+            )),
+          )
         else if (_blogs == null || _blogs!.isEmpty)
           const SliverFillRemaining(
             hasScrollBody: false,
@@ -150,10 +174,9 @@ class _BlogCardState extends State<_BlogCard> {
                   tag: 'blog_${blog.slug}',
                   child: CachedNetworkImage(
                     imageUrl: blog.coverImage,
-                    height: 195, width: double.infinity,
-                    fit: BoxFit.cover,
-                    placeholder: (_, _) => _imagePlaceholder(195),
-                    errorWidget: (_, _, _) => _imagePlaceholder(195),
+                    height: 195, width: double.infinity, fit: BoxFit.cover,
+                    placeholder: (_, _) => _shimmerPlaceholder(195),
+                    errorWidget: (_, _, _) => _shimmerPlaceholder(195),
                   ),
                 )
               else
@@ -185,14 +208,13 @@ class _BlogCardState extends State<_BlogCard> {
                   ]),
                   const SizedBox(height: 10),
                   Text(blog.title, maxLines: 2, overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontFamily: 'Inter', 
+                    style: TextStyle(fontFamily: 'Inter',
                       fontSize: 16, fontWeight: FontWeight.w700, height: 1.35,
                       color: AppColors.textDark)),
                   const SizedBox(height: 6),
                   Text(blog.displayExcerpt, maxLines: 2, overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.5)),
                   const SizedBox(height: 12),
-                  // Read more row
                   Row(children: [
                     Text('Read more', style: TextStyle(
                       color: AppColors.primary, fontSize: 13, fontWeight: FontWeight.w600)),
@@ -208,7 +230,8 @@ class _BlogCardState extends State<_BlogCard> {
     );
   }
 
-  Widget _imagePlaceholder(double height) => Shimmer.fromColors(
+  // Static shimmer placeholder — created once, not per-build
+  static Widget _shimmerPlaceholder(double height) => Shimmer.fromColors(
     baseColor: Colors.grey.shade200, highlightColor: Colors.grey.shade50,
     child: Container(height: height, color: Colors.white),
   );

@@ -19,6 +19,7 @@ class AppColors {
 
 class AppConstants {
   static const appName = 'APPTD Employees Union';
+  static const githubReleasesUrl = 'https://api.github.com/repos/sameer786ss/ApptdEUApp/releases/latest';
   static const categories = ['General', 'Employees', 'Circulars', 'News'];
 
   // ── Exact URLs from website Header.tsx ──
@@ -39,7 +40,7 @@ class AppConstants {
     'CCS STL Loan Application': 'https://apsrtc-ccs-ssp.smartcbs.net/assets/STLForm-CCS5.pdf',
     'CCS Festival Application': 'https://apsrtc-ccs-ssp.smartcbs.net/assets/FestivalLoanForm-CCS5F.pdf',
     'CCS Membership & Nominee': 'https://drive.google.com/uc?export=download&id=1CVtbSc4qCvvwgq56Jtzc9YLXLaHueqdO',
-    'CCS FD-RD Claim': 'https://drive.google.com/uc?export=download&id=1CVtbSc4qCvvwgq56Jtzc9YLXLaHueqdO',
+    'CCS FD-RD Claim': 'https://drive.google.com/uc?export=download&id=1HGTzoBUEBFZMvap3WvAFNczw3TtpWBO0',
     'CCS Additional Thrift Form': 'https://drive.google.com/uc?export=download&id=1p_4hSbnfSulsnUzwPi-iwtkFLDcyrTk6',
     'CCS RD Form (CCS 28)': 'https://drive.google.com/uc?export=download&id=1HzNa25H0_Ul54ldYDttr8ivDMqC5fXHv',
     'CCS RET CMS Claim Form': 'https://drive.google.com/uc?export=download&id=1Yz6Qug9nMDkEQtC7MCr4nzwHzbIjWvzi',

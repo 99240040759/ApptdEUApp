@@ -4,13 +4,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:shimmer/shimmer.dart';
 import '../../config/theme.dart';
 import '../../models/blog_post.dart';
-import '../../models/circular.dart';
-import '../../models/union_affair.dart';
+import '../../models/file_item.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
-
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -56,12 +55,9 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         ]),
         bottom: TabBar(
           controller: _tabCtrl,
-          indicatorColor: Colors.white,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white60,
-          indicatorWeight: 3,
-          tabs: const [
-            Tab(text: 'Blogs'), Tab(text: 'Circulars'), Tab(text: 'Union Affairs')],
+          indicatorColor: Colors.white, labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60, indicatorWeight: 3,
+          tabs: const [Tab(text: 'Blogs'), Tab(text: 'Circulars'), Tab(text: 'Union Affairs')],
         ),
         actions: [IconButton(icon: const Icon(Icons.logout_rounded), tooltip: 'Logout', onPressed: _logout)],
       ),
@@ -101,7 +97,6 @@ class _BlogsTabState extends State<_BlogsTab> with AutomaticKeepAliveClientMixin
     } catch (_) { if (mounted) setState(() => _loading = false); }
   }
 
-
   Future<void> _delete(BlogPost b) async {
     final ok = await _confirmDelete(context, b.title);
     if (ok != true || !mounted) return;
@@ -123,9 +118,7 @@ class _BlogsTabState extends State<_BlogsTab> with AutomaticKeepAliveClientMixin
                     padding: const EdgeInsets.all(10),
                     itemCount: _blogs.length,
                     itemBuilder: (_, i) => _AdminBlogCard(
-                      blog: _blogs[i],
-                      onDelete: () => _delete(_blogs[i]),
-                    ),
+                      blog: _blogs[i], onDelete: () => _delete(_blogs[i])),
                   ),
                 ),
     );
@@ -146,9 +139,7 @@ class _AdminBlogCard extends StatelessWidget {
         leading: Container(
           width: 42, height: 42,
           decoration: BoxDecoration(
-            color: AppColors.primary.withAlpha(15),
-            borderRadius: BorderRadius.circular(10),
-          ),
+            color: AppColors.primary.withAlpha(15), borderRadius: BorderRadius.circular(10)),
           child: const Icon(Icons.article_rounded, color: AppColors.primary, size: 22),
         ),
         title: Text(blog.title,
@@ -159,8 +150,7 @@ class _AdminBlogCard extends StatelessWidget {
           style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
         trailing: IconButton(
           icon: Icon(Icons.delete_rounded, size: 20, color: Colors.red.shade400),
-          onPressed: onDelete,
-          tooltip: 'Delete',
+          onPressed: onDelete, tooltip: 'Delete',
           visualDensity: VisualDensity.compact,
         ),
       ),
@@ -170,6 +160,7 @@ class _AdminBlogCard extends StatelessWidget {
 
 // ═══════════════════════════════════════════════
 // FILES TAB (Circulars & Union Affairs)
+// Uses unified FileItem model — no more List<dynamic> or cast helpers
 // ═══════════════════════════════════════════════
 class _FilesTab extends StatefulWidget {
   final FirestoreService fs;
@@ -180,7 +171,7 @@ class _FilesTab extends StatefulWidget {
 }
 
 class _FilesTabState extends State<_FilesTab> with AutomaticKeepAliveClientMixin {
-  List<dynamic> _items = [];
+  List<FileItem> _items = [];
   bool _loading = true;
   @override
   bool get wantKeepAlive => true;
@@ -199,12 +190,6 @@ class _FilesTabState extends State<_FilesTab> with AutomaticKeepAliveClientMixin
     } catch (_) { if (mounted) setState(() => _loading = false); }
   }
 
-  String _title(dynamic item) => _isCirculars ? (item as Circular).title : (item as UnionAffair).title;
-  String _date(dynamic item) => _isCirculars ? (item as Circular).date : (item as UnionAffair).date;
-  String _id(dynamic item) => _isCirculars ? (item as Circular).id : (item as UnionAffair).id;
-  String _url(dynamic item) => _isCirculars ? (item as Circular).fileUrl : (item as UnionAffair).fileUrl;
-  String _type(dynamic item) => _isCirculars ? (item as Circular).fileType : (item as UnionAffair).fileType;
-
   Future<void> _showUpload() async {
     final uploaded = await showModalBottomSheet<bool>(
       context: context,
@@ -215,12 +200,12 @@ class _FilesTabState extends State<_FilesTab> with AutomaticKeepAliveClientMixin
     if (uploaded == true) _load();
   }
 
-  Future<void> _delete(dynamic item) async {
-    final ok = await _confirmDelete(context, _title(item));
+  Future<void> _delete(FileItem item) async {
+    final ok = await _confirmDelete(context, item.title);
     if (ok != true || !mounted) return;
     await _runDelete(context, () => _isCirculars
-        ? widget.fs.deleteCircular(_id(item), _url(item))
-        : widget.fs.deleteUnionAffair(_id(item), _url(item)));
+        ? widget.fs.deleteCircular(item.id, item.fileUrl)
+        : widget.fs.deleteUnionAffair(item.id, item.fileUrl));
     _load();
   }
 
@@ -251,7 +236,7 @@ class _FilesTabState extends State<_FilesTab> with AutomaticKeepAliveClientMixin
                     itemCount: _items.length,
                     itemBuilder: (_, i) {
                       final item = _items[i];
-                      final type = _type(item);
+                      final color = _iconColor(item.fileType);
                       return Card(
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
@@ -259,21 +244,18 @@ class _FilesTabState extends State<_FilesTab> with AutomaticKeepAliveClientMixin
                           leading: Container(
                             width: 42, height: 42,
                             decoration: BoxDecoration(
-                              color: _iconColor(type).withAlpha(15),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(_icon(type), color: _iconColor(type), size: 22),
+                              color: color.withAlpha(15), borderRadius: BorderRadius.circular(10)),
+                            child: Icon(_icon(item.fileType), color: color, size: 22),
                           ),
-                          title: Text(_title(item),
-                            style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 14),
+                          title: Text(item.title,
+                            style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 14),
                             maxLines: 1, overflow: TextOverflow.ellipsis),
                           subtitle: Text(
-                            '${type.toUpperCase()} · ${_date(item)}',
+                            '${item.fileType.toUpperCase()} · ${item.date}',
                             style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
                           trailing: IconButton(
                             icon: Icon(Icons.delete_rounded, size: 20, color: Colors.red.shade400),
-                            onPressed: () => _delete(item),
-                            tooltip: 'Delete',
+                            onPressed: () => _delete(item), tooltip: 'Delete',
                           ),
                         ),
                       );
@@ -281,8 +263,7 @@ class _FilesTabState extends State<_FilesTab> with AutomaticKeepAliveClientMixin
                   ),
                 ),
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppColors.primaryButton,
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.primaryButton, foregroundColor: Colors.white,
         onPressed: _showUpload,
         icon: const Icon(Icons.upload_rounded),
         label: Text('Upload ${_isCirculars ? 'Circular' : 'File'}',
@@ -308,7 +289,7 @@ class _UploadSheetState extends State<_UploadSheet> {
   Uint8List? _bytes;
   String? _fileName;
   String? _fileType;
-  double? _progress; // null = idle, 0.0–1.0 = uploading
+  double? _progress;
   String? _error;
 
   @override
@@ -373,44 +354,33 @@ class _UploadSheetState extends State<_UploadSheet> {
       padding: EdgeInsets.fromLTRB(20, 12, 20,
         20 + MediaQuery.of(context).viewInsets.bottom),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Handle bar
         Center(child: Container(width: 40, height: 4,
           decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)))),
         const SizedBox(height: 16),
         Text('Upload $sheetLabel',
-          style: TextStyle(fontFamily: 'Inter', fontSize: 17, fontWeight: FontWeight.w700)),
+          style: const TextStyle(fontFamily: 'Inter', fontSize: 17, fontWeight: FontWeight.w700)),
         const SizedBox(height: 18),
-
-        // Title field
         TextField(
-          controller: _titleCtrl,
-          enabled: !_isUploading,
+          controller: _titleCtrl, enabled: !_isUploading,
           decoration: InputDecoration(
-            labelText: 'Title',
-            hintText: 'Enter title…',
+            labelText: 'Title', hintText: 'Enter title…',
             prefixIcon: const Icon(Icons.title_rounded),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             filled: true, fillColor: Colors.grey.shade50,
           ),
         ),
         const SizedBox(height: 14),
-
-        // File picker zone
         GestureDetector(
           onTap: _isUploading ? null : _pickFile,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
+            width: double.infinity, padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: _bytes != null
-                  ? AppColors.primary.withAlpha(8)
-                  : Colors.grey.shade50,
+              color: _bytes != null ? AppColors.primary.withAlpha(8) : Colors.grey.shade50,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
                 color: _bytes != null ? AppColors.primary.withAlpha(80) : Colors.grey.shade300,
                 width: _bytes != null ? 1.5 : 1,
-                style: BorderStyle.solid,
               ),
             ),
             child: _bytes == null
@@ -420,10 +390,7 @@ class _UploadSheetState extends State<_UploadSheet> {
                     Text('Tap to choose file',
                       style: TextStyle(fontWeight: FontWeight.w600, color: Colors.grey.shade500)),
                     const SizedBox(height: 4),
-                    Text(
-                      widget.isCirculars
-                          ? 'PDF, JPG, PNG'
-                          : 'PDF, JPG, PNG, MP3, WAV, AAC',
+                    Text(widget.isCirculars ? 'PDF, JPG, PNG' : 'PDF, JPG, PNG, MP3, WAV, AAC',
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
                   ])
                 : Row(children: [
@@ -441,8 +408,6 @@ class _UploadSheetState extends State<_UploadSheet> {
           ),
         ),
         const SizedBox(height: 14),
-
-        // Progress bar
         if (_isUploading) ...[
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Text('Uploading…', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
@@ -452,15 +417,12 @@ class _UploadSheetState extends State<_UploadSheet> {
           const SizedBox(height: 6),
           ClipRRect(borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
-              value: _progress,
-              minHeight: 8,
+              value: _progress, minHeight: 8,
               backgroundColor: Colors.grey.shade200,
               valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
             )),
           const SizedBox(height: 14),
         ],
-
-        // Error message
         if (_error != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -470,11 +432,8 @@ class _UploadSheetState extends State<_UploadSheet> {
               Expanded(child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12))),
             ]),
           ),
-
-        // Upload button
         SizedBox(
-          width: double.infinity,
-          height: 50,
+          width: double.infinity, height: 50,
           child: FilledButton.icon(
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.primaryButton,
@@ -503,8 +462,7 @@ class _UploadSheetState extends State<_UploadSheet> {
     };
     return Container(
       width: 44, height: 44,
-      decoration: BoxDecoration(
-        color: color.withAlpha(18), borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(color: color.withAlpha(18), borderRadius: BorderRadius.circular(10)),
       child: Icon(icon, color: color, size: 24),
     );
   }
@@ -563,15 +521,20 @@ Future<void> _runDelete(BuildContext ctx, Future<void> Function() deleteFn) asyn
   }
 }
 
-Widget _loadingShimmer() => ListView.builder(
-  padding: const EdgeInsets.all(10),
-  itemCount: 6,
-  itemBuilder: (_, _) => Card(
-    margin: const EdgeInsets.only(bottom: 8),
-    child: ListTile(
-      leading: Container(width: 42, height: 42, color: Colors.grey.shade200),
-      title: Container(height: 14, width: 200, color: Colors.grey.shade200),
-      subtitle: Container(height: 11, width: 100, color: Colors.grey.shade100),
+// FIX: actual Shimmer animation instead of static grey boxes
+Widget _loadingShimmer() => Shimmer.fromColors(
+  baseColor: Colors.grey.shade200, highlightColor: Colors.grey.shade50,
+  child: ListView.builder(
+    padding: const EdgeInsets.all(10),
+    itemCount: 6,
+    itemBuilder: (_, _) => Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Container(width: 42, height: 42,
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10))),
+        title: Container(height: 14, width: 200, color: Colors.white),
+        subtitle: Container(height: 11, width: 100, color: Colors.white),
+      ),
     ),
   ),
 );

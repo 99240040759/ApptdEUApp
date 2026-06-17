@@ -13,25 +13,22 @@ class AuthService {
   Stream<User?> get authStateChanges => _auth.authStateChanges();
   User? get currentUser => _auth.currentUser;
 
-  Future<void> init() async {
-    await GoogleSignIn.instance.initialize();
-  }
+  Future<void> init() async { await GoogleSignIn.instance.initialize(); }
 
+  /// Returns true if signed-in user is admin.
+  /// Throws on non-canceled GoogleSignIn errors so callers can surface them.
   Future<bool> signInWithGoogle() async {
     try {
       final account = await GoogleSignIn.instance.authenticate();
-      // .authentication is sync in google_sign_in 7.x (not a Future)
       final googleAuth = account.authentication;
-      final credential = GoogleAuthProvider.credential(
-        idToken: googleAuth.idToken,
-        // accessToken moved to authorizationClient in 7.x; idToken alone suffices for Firebase
-      );
+      final credential = GoogleAuthProvider.credential(idToken: googleAuth.idToken);
       await _auth.signInWithCredential(credential);
       return checkIsAdmin();
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) return false;
-      return false;
-    } catch (_) { return false; }
+      throw Exception('Google Sign-In failed: ${e.toString()}');
+    }
+    // All other exceptions propagate to caller (network errors, Firebase errors)
   }
 
   Future<bool> checkIsAdmin() async {

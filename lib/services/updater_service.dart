@@ -5,12 +5,9 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
+import '../config/theme.dart';
 
 class UpdaterService {
-  // Release repo: sameer786ss/ApptdEUApp
-  static const _releasesUrl =
-      'https://api.github.com/repos/sameer786ss/ApptdEUApp/releases/latest';
-
   static final UpdaterService _instance = UpdaterService._();
   factory UpdaterService() => _instance;
   UpdaterService._();
@@ -35,7 +32,7 @@ class UpdaterService {
 
   Future<Map<String, dynamic>?> _fetchLatestRelease() async {
     final res = await http.get(
-      Uri.parse(_releasesUrl),
+      Uri.parse(AppConstants.githubReleasesUrl),
       headers: {'Accept': 'application/vnd.github+json'},
     ).timeout(const Duration(seconds: 10));
     if (res.statusCode != 200) return null;

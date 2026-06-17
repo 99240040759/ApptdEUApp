@@ -20,6 +20,12 @@ class _BlogDetailScreenState extends State<BlogDetailScreen> {
   BlogPost? _blog;
   bool _loading = true;
   String? _error;
+  // FIX: cached once after load — not recomputed on every build
+  String? _readTime;
+
+  // Cached RegExps — compile once for all instances
+  static final _wordRe = RegExp(r'<[^>]*>');
+  static final _spaceRe = RegExp(r'\s+');
 
   @override
   void initState() { super.initState(); _load(); }
@@ -27,14 +33,20 @@ class _BlogDetailScreenState extends State<BlogDetailScreen> {
   Future<void> _load() async {
     try {
       final blog = await FirestoreService().getBlogBySlug(widget.slug);
-      if (mounted) setState(() { _blog = blog; _loading = false; });
+      if (mounted) {
+        setState(() {
+          _blog = blog;
+          _loading = false;
+          if (blog != null) { _readTime = _computeReadTime(blog.content); }
+        });
+      }
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+      if (mounted) { setState(() { _error = e.toString(); _loading = false; }); }
     }
   }
 
-  String _readTime(String html) {
-    final words = html.replaceAll(RegExp(r'<[^>]*>'), ' ').split(RegExp(r'\s+')).length;
+  String _computeReadTime(String html) {
+    final words = html.replaceAll(_wordRe, ' ').split(_spaceRe).length;
     final mins = (words / 200).ceil();
     return '$mins min read';
   }
@@ -108,12 +120,12 @@ class _BlogDetailScreenState extends State<BlogDetailScreen> {
                   Text(DateFormat('MMMM d, yyyy').format(blog.createdAt),
                     style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
                 ]),
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.schedule_rounded, size: 13, color: AppColors.textMuted),
-                  const SizedBox(width: 4),
-                  Text(_readTime(blog.content),
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                ]),
+                if (_readTime != null)
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.schedule_rounded, size: 13, color: AppColors.textMuted),
+                    const SizedBox(width: 4),
+                    Text(_readTime!, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                  ]),
               ]),
               const SizedBox(height: 14),
               Text(blog.title, style: const TextStyle(

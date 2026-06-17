@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import '../config/theme.dart';
-import '../models/circular.dart';
+import '../models/file_item.dart';
 import '../services/firestore_service.dart';
 import '../utils/file_helpers.dart';
 
@@ -12,9 +12,10 @@ class CircularsScreen extends StatefulWidget {
 }
 
 class _CircularsScreenState extends State<CircularsScreen> {
-  List<Circular>? _all;
-  List<Circular> _filtered = [];
+  List<FileItem>? _all;
+  List<FileItem> _filtered = [];
   bool _loading = true;
+  String? _error;
   final _searchCtrl = TextEditingController();
 
   @override
@@ -23,11 +24,13 @@ class _CircularsScreenState extends State<CircularsScreen> {
   void dispose() { _searchCtrl.dispose(); super.dispose(); }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; _error = null; });
     try {
       final list = await FirestoreService().getCirculars();
       if (mounted) setState(() { _all = list; _filtered = list; _loading = false; });
-    } catch (_) { if (mounted) setState(() => _loading = false); }
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
   }
 
   void _filter(String q) {
@@ -36,7 +39,7 @@ class _CircularsScreenState extends State<CircularsScreen> {
       _all!.where((c) => c.title.toLowerCase().contains(q.toLowerCase())).toList());
   }
 
-  void _openFile(Circular c) {
+  void _openFile(FileItem c) {
     if (c.fileType == 'image') {
       openImageViewer(context, c.fileUrl, c.title);
     } else {
@@ -72,20 +75,39 @@ class _CircularsScreenState extends State<CircularsScreen> {
           ? ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               itemCount: 6, itemBuilder: (_, _) => _shimmer())
-          : _filtered.isEmpty
-            ? ListView(children: const [SizedBox(height: 120), Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.search_off_rounded, size: 56, color: AppColors.textMuted),
-                SizedBox(height: 8),
-                Text('No circulars found', style: TextStyle(color: AppColors.textMuted)),
-              ]))])
-            : ListView.builder(
-                itemCount: _filtered.length,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                itemBuilder: (_, i) => _CircularCard(
-                  circular: _filtered[i],
-                  onTap: () => _openFile(_filtered[i]),
+          : _error != null
+            ? ListView(children: [
+                SizedBox(height: 80),
+                Center(child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.wifi_off_rounded, size: 56, color: AppColors.textMuted),
+                    const SizedBox(height: 10),
+                    const Text('Failed to load circulars', style: TextStyle(color: AppColors.textMuted, fontSize: 15)),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Retry'),
+                      style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                    ),
+                  ]),
+                )),
+              ])
+            : _filtered.isEmpty
+              ? ListView(children: const [SizedBox(height: 120), Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.search_off_rounded, size: 56, color: AppColors.textMuted),
+                  SizedBox(height: 8),
+                  Text('No circulars found', style: TextStyle(color: AppColors.textMuted)),
+                ]))])
+              : ListView.builder(
+                  itemCount: _filtered.length,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  itemBuilder: (_, i) => _CircularCard(
+                    item: _filtered[i],
+                    onTap: () => _openFile(_filtered[i]),
+                  ),
                 ),
-              ),
       )),
     ]);
   }
@@ -111,9 +133,9 @@ class _CircularsScreenState extends State<CircularsScreen> {
 
 // ── Per-item card with press scale ──
 class _CircularCard extends StatefulWidget {
-  final Circular circular;
+  final FileItem item;
   final VoidCallback onTap;
-  const _CircularCard({required this.circular, required this.onTap});
+  const _CircularCard({required this.item, required this.onTap});
   @override
   State<_CircularCard> createState() => _CircularCardState();
 }
@@ -123,7 +145,7 @@ class _CircularCardState extends State<_CircularCard> {
 
   @override
   Widget build(BuildContext context) {
-    final c = widget.circular;
+    final c = widget.item;
     final isPdf = c.fileType == 'pdf';
     final isImage = c.fileType == 'image';
     final (iconData, iconColor, bgColor) = isPdf
@@ -148,14 +170,10 @@ class _CircularCardState extends State<_CircularCard> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
             child: Row(children: [
-              // File type icon box
-              Container(
-                width: 50, height: 50,
+              Container(width: 50, height: 50,
                 decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(12)),
-                child: Icon(iconData, color: iconColor, size: 26),
-              ),
+                child: Icon(iconData, color: iconColor, size: 26)),
               const SizedBox(width: 14),
-              // Content
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(c.title, maxLines: 2, overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w600, height: 1.3)),
@@ -176,15 +194,10 @@ class _CircularCardState extends State<_CircularCard> {
                   Text(c.date, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
                 ]),
               ])),
-              // Arrow
               Container(
                 width: 34, height: 34,
-                decoration: BoxDecoration(
-                  color: iconColor.withAlpha(15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  isPdf ? Icons.open_in_new_rounded : Icons.open_in_full_rounded,
+                decoration: BoxDecoration(color: iconColor.withAlpha(15), borderRadius: BorderRadius.circular(10)),
+                child: Icon(isPdf ? Icons.open_in_new_rounded : Icons.open_in_full_rounded,
                   size: 16, color: iconColor),
               ),
             ]),
@@ -194,4 +207,3 @@ class _CircularCardState extends State<_CircularCard> {
     );
   }
 }
-
